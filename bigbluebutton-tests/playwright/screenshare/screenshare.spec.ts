@@ -12,6 +12,14 @@ test.describe.parallel('Screenshare', { tag: ['@ci', '@media'] }, () => {
     await screenshare.stopSharing();
   });
 
+  test('Webcams fill the media area after screenshare ends when no presentation is loaded', async ({ browser, context, browserName, page }, testInfo) => {
+    test.skip(browserName === 'firefox', 'Screenshare tests not able in Firefox browser without desktop');
+    const screenshare = new ScreenShare(browser, context);
+    await screenshare.initModPage(page, { testInfo });
+    await screenshare.initUserPage(context, { testInfo });
+    await screenshare.webcamsFillAreaAfterSharingWithoutPresentation();
+  });
+
   test('Start screenshare stops external video', { tag: '@flaky' }, async ({ browser, context, page }, testInfo) => {
     // requiring logged user to start external video on CI environment
     linkIssue(21589);
