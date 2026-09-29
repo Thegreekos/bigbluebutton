@@ -1,5 +1,6 @@
 import React, {
   useMemo,
+  useRef,
   useState,
   useCallback,
   memo,
@@ -84,6 +85,9 @@ const PresentationContainer = ({
     {
       variables: { pageId: currentPageId },
       skip: !currentPageId,
+      // The container is remounted after screenshare; start history from the
+      // current annotation state rather than replaying the cached initial rows.
+      fetchPolicy: 'network-only',
     },
   );
 
@@ -102,13 +106,21 @@ const PresentationContainer = ({
   }, [initialPageAnnotations, currentMeeting?.createdTime]);
 
   const canStream = !!lastUpdatedAt;
+  const lastSeenEventAt = useRef(0);
 
   useSubscription(ANNOTATION_HISTORY_STREAM, {
     variables: { pageId: currentPageId, updatedAt: lastUpdatedAt },
     skip: !currentPageId || !canStream,
     onData: ({ data: subscriptionData }) => {
       const annotationStream = subscriptionData.data?.pres_annotation_history_curr_stream || [];
-      if (annotationStream.length > 0 && restoreOnUpdate && !presentationIsOpen) {
+      const newestInBatch = annotationStream.reduce(
+        (latest, row) => Math.max(latest, new Date(row.updatedAt).getTime()),
+        0,
+      );
+      const streamStartedAt = new Date(lastUpdatedAt).getTime();
+      const hasNewEvent = newestInBatch > Math.max(streamStartedAt, lastSeenEventAt.current);
+      lastSeenEventAt.current = Math.max(lastSeenEventAt.current, newestInBatch);
+      if (restoreOnUpdate && !presentationIsOpen && hasNewEvent) {
         MediaService.setPresentationIsOpen(layoutContextDispatch, true);
       }
       setAnnotationStreamData(annotationStream);

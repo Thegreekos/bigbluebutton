@@ -5,6 +5,7 @@ import { elements as e } from '../core/elements';
 import { Page } from '../core/page';
 import { MultiUsers } from '../user/multiusers';
 import { startScreenshare } from './util';
+import { viewerDrawsTwoStrokesAndErasesOne } from '../whiteboard/util';
 
 export class ScreenShare extends MultiUsers {
   async startSharing() {
@@ -93,6 +94,27 @@ export class ScreenShare extends MultiUsers {
     const viewport = this.modPage.page.viewportSize();
     if (!webcamBox || !viewport) throw new Error('webcam or viewport size not available');
     expect(webcamBox.height, 'the webcam should fill the media area again').toBeGreaterThan(viewport.height * 0.4);
+  }
+
+  // A reconnect or screenshare remount may replay old annotation history;
+  // it must not count as a new edit that reopens a hidden presentation.
+  async presentationStaysHiddenAfterSharingWithAnnotations() {
+    test.skip(!this.modPage.settings?.screensharingEnabled, 'Screen sharing is disabled');
+    await this.modPage.waitForSelector(e.whiteboard, ELEMENT_WAIT_LONGER_TIME);
+    await this.userPage.waitForSelector(e.whiteboard, ELEMENT_WAIT_LONGER_TIME);
+
+    await viewerDrawsTwoStrokesAndErasesOne(this.modPage, this.userPage);
+    await this.modPage.waitAndClick(e.minimizePresentation);
+    await this.modPage.wasRemoved(e.presentationContainer, 'should hide the presentation');
+    await this.modPage.hasElement(e.restorePresentation, 'should display the restore presentation button');
+
+    await startScreenshare(this.modPage);
+    await this.modPage.waitAndClick(e.stopScreenSharing);
+    await this.modPage.wasRemoved(e.isSharingScreen, 'should stop screensharing');
+    await this.modPage.page.waitForTimeout(ELEMENT_WAIT_TIME);
+    await this.modPage.hasElement(e.restorePresentation, 'old annotation history should not reopen the presentation');
+    await this.modPage.wasRemoved(e.presentationContainer, 'the presentation should remain hidden');
+    await this.modPage.wasRemoved(e.minimizePresentation, 'the minimize control should remain hidden');
   }
 
   async stopSharing() {
