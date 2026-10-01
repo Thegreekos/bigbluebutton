@@ -4,8 +4,8 @@ import { ELEMENT_WAIT_LONGER_TIME, ELEMENT_WAIT_TIME } from '../core/constants';
 import { elements as e } from '../core/elements';
 import { Page } from '../core/page';
 import { MultiUsers } from '../user/multiusers';
-import { startScreenshare } from './util';
 import { viewerDrawsTwoStrokesAndErasesOne } from '../whiteboard/util';
+import { startScreenshare } from './util';
 
 export class ScreenShare extends MultiUsers {
   async startSharing() {
