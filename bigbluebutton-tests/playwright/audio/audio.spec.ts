@@ -32,6 +32,10 @@ test.describe.parallel('Audio', { tag: ['@ci', '@media'] }, () => {
     await audio.muteYourselfByButton();
   });
 
+  test('Push-to-talk always mutes on release after focus or modifier changes', async () => {
+    await audio.pushToTalkReleaseAfterFocusChange();
+  });
+
   // https://docs.bigbluebutton.org/3.0/testing/release-testing/#choosing-different-sources
   test('Keep the last mute state after rejoining audio', async () => {
     await audio.keepMuteStateOnRejoin();

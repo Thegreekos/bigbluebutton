@@ -88,7 +88,28 @@ export const MuteToggle: React.FC<MuteToggleProps> = ({
 
   const COOLDOWN_TIME = 800;
 
+  const releasePushToTalk = useCallback(() => {
+    if (!isKeyDown.current) return;
+
+    isKeyDown.current = false;
+    stopPushToTalk(toggleVoice);
+    cooldownActive.current = true;
+
+    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    cooldownTimerRef.current = setTimeout(() => {
+      cooldownActive.current = false;
+      cooldownTimerRef.current = null;
+    }, COOLDOWN_TIME);
+  }, [toggleVoice]);
+
   const handlePushToTalk = useCallback((action: 'down' | 'up', event: KeyboardEvent) => {
+    // Once PTT opened the microphone, key-up must always close it. Focus may
+    // have moved into chat or a modifier may have been pressed in the meantime.
+    if (action === 'up') {
+      if (event.key.toLowerCase() === KEYS.m.toLowerCase()) releasePushToTalk();
+      return;
+    }
+
     const activeElement = document.activeElement as HTMLElement | null;
     const isInputField = activeElement
       && (activeElement instanceof HTMLInputElement
@@ -105,7 +126,7 @@ export const MuteToggle: React.FC<MuteToggleProps> = ({
         || isInputField
     ) return;
 
-    if (action === 'down' && !isKeyDown.current) {
+    if (!isKeyDown.current) {
       // Only unmuting the mic is refused while the media session is down as it is
       // a no-op that may create an inconsistent state.
       // Muting should still go through as it is partially effective locally.
@@ -113,27 +134,27 @@ export const MuteToggle: React.FC<MuteToggleProps> = ({
 
       isKeyDown.current = true;
       startPushToTalk(toggleVoice);
-    } else if (action === 'up') {
-      isKeyDown.current = false;
-      stopPushToTalk(toggleVoice);
-      cooldownActive.current = true;
-      cooldownTimerRef.current = setTimeout(() => {
-        cooldownActive.current = false;
-      }, COOLDOWN_TIME);
     }
     setTimeout(() => {
       muteLoadingState(false);
     }, 1000);
-  }, [mediaInterrupted]);
+  }, [mediaInterrupted, releasePushToTalk, toggleVoice]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => handlePushToTalk('down', event);
     const handleKeyUp = (event: KeyboardEvent) => handlePushToTalk('up', event);
+    const handleFocusLoss = () => releasePushToTalk();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') handleFocusLoss();
+    };
 
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleFocusLoss);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      releasePushToTalk();
       if (cooldownTimerRef.current) {
         clearTimeout(cooldownTimerRef.current);
         cooldownTimerRef.current = null;
@@ -141,8 +162,10 @@ export const MuteToggle: React.FC<MuteToggleProps> = ({
       }
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleFocusLoss);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [handlePushToTalk]);
+  }, [handlePushToTalk, releasePushToTalk]);
 
   useEffect(() => {
     muteLoadingState(false);

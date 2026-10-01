@@ -56,6 +56,39 @@ export class Audio extends MultiUsers {
     );
   }
 
+  async pushToTalkReleaseAfterFocusChange() {
+    if (!this?.modPage) throw new Error('modPage not initialized');
+
+    await this.modPage.waitAndClick(e.joinAudio);
+    await connectMicrophone(this.modPage);
+    await this.modPage.hasElement(e.unmuteMicButton, 'should join audio muted');
+    await this.modPage.waitAndClick(e.messagesSidebarButton);
+    await this.modPage.waitAndClick(e.publicChatButton);
+
+    const { page } = this.modPage;
+    await page.locator(e.unmuteMicButton).focus();
+    await page.keyboard.down('m');
+    await this.modPage.hasElement(e.muteMicButton, 'PTT should open the microphone');
+
+    await page.locator(e.chatBox).focus();
+    await page.keyboard.up('m');
+    await this.modPage.hasElement(e.unmuteMicButton, 'releasing PTT in chat should mute the microphone');
+
+    await page.locator(e.unmuteMicButton).focus();
+    await page.keyboard.down('m');
+    await this.modPage.hasElement(e.muteMicButton, 'PTT should open after the previous release');
+    await page.keyboard.down('Control');
+    await page.keyboard.up('m');
+    await this.modPage.hasElement(e.unmuteMicButton, 'releasing PTT with a modifier held should mute the microphone');
+    await page.keyboard.up('Control');
+
+    await page.locator(e.unmuteMicButton).focus();
+    await page.keyboard.down('m');
+    await this.modPage.hasElement(e.muteMicButton, 'PTT should remain usable after guarded key-up');
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await this.modPage.hasElement(e.unmuteMicButton, 'losing window focus should release PTT');
+  }
+
   async muteYourselfByButton() {
     if (!this?.modPage) throw new Error('modPage not initialized');
 
