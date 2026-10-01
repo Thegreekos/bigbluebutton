@@ -97,6 +97,31 @@ class GrahqlSubscriptionStore {
     return newSubStructure;
   }
 
+  updateSubscription<T>(
+    subscription: DocumentNode | TypedQueryDocumentNode,
+    variables: Record<string, unknown> = {},
+    updateData: (data: T) => T,
+  ): boolean {
+    const subscriptionHash = stringToHash(JSON.stringify({ subscription, variables }));
+    const subscriptionStored = this.graphqlSubscriptions[subscriptionHash];
+    if (!subscriptionStored) return false;
+
+    const current = subscriptionStored();
+    if (!current.data) return false;
+
+    const data = updateData(current.data as T);
+    const next = { ...current, data };
+    subscriptionStored(next);
+    window.dispatchEvent(new CustomEvent('graphqlSubscription', {
+      detail: {
+        subscriptionHash,
+        type: 'next',
+        response: { data, loading: next.loading },
+      },
+    }));
+    return true;
+  }
+
   unsubscribe(subscription: DocumentNode | TypedQueryDocumentNode, variables?: Record<string, unknown>) {
     const subscriptionHash = stringToHash(JSON.stringify({ subscription, variables }));
     const subscriptionStored = this.graphqlSubscriptions[subscriptionHash];

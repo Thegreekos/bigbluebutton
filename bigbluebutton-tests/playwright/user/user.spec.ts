@@ -286,6 +286,12 @@ test.describe.parallel('User', { tag: '@ci' }, () => {
         await lockViewers.lockSendPublicChatMessages();
       });
 
+      test('Rapid lock-settings saves preserve unchanged permissions', async ({ browser, context, page }, testInfo) => {
+        const lockViewers = new LockViewers(browser, context);
+        await lockViewers.initPages(page, testInfo);
+        await lockViewers.rapidLockSettingsSavesPreserveUntouchedPermissions();
+      });
+
       // https://docs.bigbluebutton.org/3.0/testing/release-testing/#private-chat
       test('Lock Send private chat messages', async ({ browser, context, page }, testInfo) => {
         const lockViewers = new LockViewers(browser, context);

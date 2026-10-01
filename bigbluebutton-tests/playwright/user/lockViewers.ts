@@ -154,6 +154,30 @@ export class LockViewers extends MultiUsers {
     await expect(attendeeRow, 'should remove the locked label from the attendee row').not.toContainText(/locked/i);
   }
 
+  async rapidLockSettingsSavesPreserveUntouchedPermissions() {
+    await openLockViewers(this.modPage);
+    await this.modPage.waitAndClick(e.participantPermissionsTab);
+    await this.modPage.waitAndClickElement(e.lockPublicChat);
+    await this.modPage.waitAndClick(e.applyLockSettings);
+
+    await openLockViewers(this.modPage);
+    await this.modPage.waitAndClick(e.participantPermissionsTab);
+    await this.modPage.waitAndClickElement(e.lockPublicChat);
+    await this.modPage.waitAndClick(e.applyLockSettings);
+
+    await openLockViewers(this.modPage);
+    await this.modPage.waitAndClick(e.participantPermissionsTab);
+    await this.modPage.waitAndClickElement(e.lockShareMicrophone);
+    await this.modPage.waitAndClick(e.applyLockSettings);
+
+    await this.userPage.waitAndClick(e.messagesSidebarButton);
+    await this.userPage.waitAndClick(e.publicChatButton);
+    await this.userPage.hasElementEnabled(
+      e.chatBox,
+      'a later microphone lock should not re-lock public chat that was just enabled',
+    );
+  }
+
   async lockSendPublicChatMessages() {
     // mod send a message
     await this.modPage.fill(e.chatBox, e.message);
