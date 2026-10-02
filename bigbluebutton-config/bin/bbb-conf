@@ -671,16 +671,14 @@ if [[ $PORT_RANGE ]]; then
         yq-go e -i ".mediasoup.worker.rtcMinPort = $START_PORT" $WEBRTC_SFU_ETC_CONFIG
         yq-go e -i ".mediasoup.worker.rtcMaxPort = $END_PORT" $WEBRTC_SFU_ETC_CONFIG
 
-        if [ -f "$WEBRTC_RECORDER_DEFAULT_CONFIG" ]; then
-            touch "$WEBRTC_RECORDER_ETC_CONFIG"
-            yq-go e -i ".webrtc.rtcMinPort = $START_PORT" "$WEBRTC_RECORDER_ETC_CONFIG"
-            yq-go e -i ".webrtc.rtcMaxPort = $END_PORT" "$WEBRTC_RECORDER_ETC_CONFIG"
+        if [ -f $WEBRTC_RECORDER_DEFAULT_CONFIG ]; then
+            yq-go e -i ".webrtc.rtcMinPort = $START_PORT" $WEBRTC_RECORDER_DEFAULT_CONFIG
+            yq-go e -i ".webrtc.rtcMaxPort = $END_PORT" $WEBRTC_RECORDER_DEFAULT_CONFIG
         fi
 
-        if [ -f "$LIVEKIT_SERVER_DEFAULT_CONFIG" ]; then
-            touch "$LIVEKIT_SERVER_ETC_CONFIG"
-            yq-go e -i ".rtc.port_range_start = $START_PORT" "$LIVEKIT_SERVER_ETC_CONFIG"
-            yq-go e -i ".rtc.port_range_end = $END_PORT" "$LIVEKIT_SERVER_ETC_CONFIG"
+        if [ -f $LIVEKIT_SERVER_ETC_CONFIG ]; then
+            yq-go e -i ".rtc.port_range_start = $START_PORT" $LIVEKIT_SERVER_ETC_CONFIG
+            yq-go e -i ".rtc.port_range_end = $END_PORT" $LIVEKIT_SERVER_ETC_CONFIG
         fi
 
         echo
