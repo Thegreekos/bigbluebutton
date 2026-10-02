@@ -1,6 +1,13 @@
 import { expect } from '@playwright/test';
 
-import { getLocalMicState, startLocalMicWatch, stopLocalMicWatch, type TestWindow } from '../audio/liveKitProbe';
+import {
+  getLocalMicState,
+  getRemoteAudioStates,
+  startLocalMicWatch,
+  stopLocalMicWatch,
+  type TestWindow,
+} from '../audio/liveKitProbe';
+import { connectMicrophone } from '../audio/util';
 import { ELEMENT_WAIT_LONGER_TIME } from '../core/constants';
 import { elements as e } from '../core/elements';
 import { isLiveKit } from '../core/livekit';
@@ -243,7 +250,7 @@ test.describe('Audio processing mode - publication continuity', { tag: ['@ci', '
     test.skip(!isLiveKit, 'publication continuity is specific to the LiveKit audio bridge');
 
     await captureGetUserMediaAudioConstraints(page);
-    await page.addInitScript(() => {
+    await context.addInitScript(() => {
       (window as TestWindow).BBB_EXPOSE_LIVEKIT_ROOM = true;
     });
 
@@ -254,8 +261,22 @@ test.describe('Audio processing mode - publication continuity', { tag: ['@ci', '
     });
 
     await audioProcessingMode.joinWithMicrophone();
+    await audioProcessingMode.initUserPage(context, { testInfo });
+    await audioProcessingMode.userPage.waitAndClick(e.joinAudio);
+    await connectMicrophone(audioProcessingMode.userPage);
     await audioProcessingMode.modPage.waitAndClick(e.unmuteMicButton);
     await audioProcessingMode.modPage.hasElement(e.isTalking, 'should be unmuted after clicking unmute');
+
+    const remotePackets = async (): Promise<number> => {
+      const states = await getRemoteAudioStates(audioProcessingMode.userPage.page);
+      const publisher = states.find((state) => state.unmuted > 0 && state.subscribed > 0 && state.liveTracks > 0);
+      expect(publisher, `viewer must subscribe to a live unmuted microphone: ${JSON.stringify(states)}`).toBeDefined();
+      return publisher!.packetsReceived;
+    };
+    const baselinePackets = await remotePackets();
+    await expect(async () => {
+      expect(await remotePackets()).toBeGreaterThan(baselinePackets);
+    }).toPass({ timeout: ELEMENT_WAIT_LONGER_TIME });
 
     const before = await getLocalMicState(page);
     expect(before.micPublications, 'a mic track should be published while unmuted').toBeGreaterThan(0);
@@ -270,6 +291,10 @@ test.describe('Audio processing mode - publication continuity', { tag: ['@ci', '
     // so be aware if flakiness hits this test in the future.
     await audioProcessingMode.modPage.page.waitForTimeout(7000);
     const samples = await stopLocalMicWatch(page);
+    const afterPackets = await remotePackets();
+    await expect(async () => {
+      expect(await remotePackets(), 'viewer must keep receiving RTP after mode change').toBeGreaterThan(afterPackets);
+    }).toPass({ timeout: ELEMENT_WAIT_LONGER_TIME });
 
     // Guarantee audio mode actually changed
     const captured = (await getCapturedAudioConstraints(page)) as CapturedAudioConstraints[];

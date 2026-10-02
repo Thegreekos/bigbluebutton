@@ -8,6 +8,19 @@ test.describe.parallel('Audio', { tag: ['@ci', '@media'] }, () => {
 
   test.beforeEach(async ({ browser, context }, testInfo) => {
     audio = new Audio(browser, context);
+    if (testInfo.title.startsWith('Push-to-talk')) {
+      // initializePages creates a separate browser context. Opt in on the
+      // actual context that owns both meeting tabs, before either is opened.
+      const audioContext = await browser.newContext();
+      await audioContext.addInitScript(() => {
+        (window as typeof window & { BBB_EXPOSE_LIVEKIT_ROOM?: boolean }).BBB_EXPOSE_LIVEKIT_ROOM = true;
+      });
+      audio = new Audio(browser, audioContext);
+      const modPage = await audioContext.newPage();
+      await audio.initModPage(modPage, { testInfo });
+      await audio.initUserPage(audioContext, { testInfo });
+      return;
+    }
     await initializePages(audio, browser, { isMultiUser: true, testInfo });
   });
 
@@ -32,8 +45,10 @@ test.describe.parallel('Audio', { tag: ['@ci', '@media'] }, () => {
     await audio.muteYourselfByButton();
   });
 
-  test('Push-to-talk always mutes on release after focus or modifier changes', async () => {
-    await audio.pushToTalkReleaseAfterFocusChange();
+  (['normal', 'focus', 'Control', 'Alt', 'blur', 'visibility'] as const).forEach((scenario) => {
+    test(`Push-to-talk release ${scenario} mutes publication and permits next cycle`, async () => {
+      await audio.pushToTalkReleaseAfterFocusChange(scenario);
+    });
   });
 
   // https://docs.bigbluebutton.org/3.0/testing/release-testing/#choosing-different-sources

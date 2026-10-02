@@ -4,45 +4,30 @@ import { ELEMENT_WAIT_EXTRA_LONG_TIME, ELEMENT_WAIT_LONGER_TIME, ELEMENT_WAIT_TI
 import { elements as e } from '../core/elements';
 import { MultiUsers } from '../user/multiusers';
 import { dragAcrossWhiteboard, viewerDrawsTwoStrokesAndErasesOne } from '../whiteboard/util';
-import { type GraphqlSockets, killConnection } from './util';
+import { type GraphqlSockets } from './util';
 
 export const ANNOTATION_HISTORY_STREAM_FIELD = 'pres_annotation_history_curr_stream';
 
 export class Reconnection extends MultiUsers {
-  async chat() {
+  async chat(graphqlSockets: GraphqlSockets) {
     // chat enabled
     await this.modPage.waitForSelector(e.chatBox);
     const chatBoxLocator = this.modPage.page.locator(e.chatBox);
     await expect(chatBoxLocator, 'should the chat box be enabled as soon as the user join').toBeEnabled();
 
-    await killConnection();
-    await this.modPage.hasElement(
-      e.notificationBannerBar,
-      'should the notification bar be displayed after connection lost',
-    );
-
-    // chat disabled and notification bar displayed
-    await Promise.all([
-      expect(chatBoxLocator, 'should the chat box be disabled when the connection lost').toBeDisabled({
-        timeout: ELEMENT_WAIT_TIME,
-      }),
-      this.modPage.hasText(
-        e.notificationBannerBar,
-        'Reconnection in progress',
-        'should the notification bar be displayed with the reconnection message',
-      ),
-    ]);
-
-    // reconnected -> chat enabled
-    await this.modPage.wasRemoved(
-      e.notificationBannerBar,
-      'notification bar should be removed after reconnecting successfully',
-      ELEMENT_WAIT_EXTRA_LONG_TIME,
-    );
+    const before = graphqlSockets.opened();
+    graphqlSockets.drop();
+    await expect
+      .poll(() => graphqlSockets.opened(), { timeout: 2 * ELEMENT_WAIT_EXTRA_LONG_TIME })
+      .toBeGreaterThan(before);
     await expect(chatBoxLocator, 'chat box should be enabled again after reconnecting successfully').toBeEnabled();
+    const message = `reconnected-chat-${Date.now()}`;
+    await this.modPage.fill(e.chatBox, message);
+    await this.modPage.waitAndClick(e.sendButton);
+    await expect(this.userPage.page.locator(e.chatUserMessageText).filter({ hasText: message })).toBeVisible();
   }
 
-  async microphone() {
+  async microphone(graphqlSockets: GraphqlSockets) {
     // join audio
     await this.modPage.waitAndClick(e.joinAudio);
     await this.modPage.joinMicrophone();
@@ -51,23 +36,11 @@ export class Reconnection extends MultiUsers {
     const muteMicButtonLocator = this.modPage.page.locator(e.muteMicButton);
     await expect(muteMicButtonLocator, 'mute button should be enabled as soon as the user join').toBeEnabled();
 
-    await killConnection();
-    await this.modPage.hasElement(
-      e.notificationBannerBar,
-      'should the notification bar be displayed after connection lost',
-    );
-    await this.modPage.hasText(
-      e.notificationBannerBar,
-      'Reconnection in progress',
-      'should the notification bar be displayed with the reconnection message',
-    );
-
-    // reconnected
-    await this.modPage.wasRemoved(
-      e.notificationBannerBar,
-      'notification bar should be removed after reconnecting successfully',
-      ELEMENT_WAIT_EXTRA_LONG_TIME,
-    );
+    const before = graphqlSockets.opened();
+    graphqlSockets.drop();
+    await expect
+      .poll(() => graphqlSockets.opened(), { timeout: 2 * ELEMENT_WAIT_EXTRA_LONG_TIME })
+      .toBeGreaterThan(before);
 
     // audio connection should keep connected
     await this.modPage.hasElement(e.muteMicButton, 'user audio should keep connected after reconnection');

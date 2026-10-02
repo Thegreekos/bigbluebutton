@@ -1,8 +1,11 @@
 import { expect } from '@playwright/test';
 
+import { ensurePublicChatOpen } from '../chat/util';
 import { ELEMENT_WAIT_LONGER_TIME } from '../core/constants';
 import { elements as e } from '../core/elements';
+import { isLiveKit } from '../core/livekit';
 import { MultiUsers } from '../user/multiusers';
+import { getAudioPublisherIdentities, getLocalMicState } from './liveKitProbe';
 import { connectMicrophone, ensureUnmuted, isAudioItemSelected } from './util';
 
 export class Audio extends MultiUsers {
@@ -56,37 +59,73 @@ export class Audio extends MultiUsers {
     );
   }
 
-  async pushToTalkReleaseAfterFocusChange() {
+  async pushToTalkReleaseAfterFocusChange(
+    scenario: 'normal' | 'focus' | 'Control' | 'Alt' | 'blur' | 'visibility' = 'focus',
+  ) {
     if (!this?.modPage) throw new Error('modPage not initialized');
 
     await this.modPage.waitAndClick(e.joinAudio);
     await connectMicrophone(this.modPage);
     await this.modPage.hasElement(e.unmuteMicButton, 'should join audio muted');
-    await this.modPage.waitAndClick(e.messagesSidebarButton);
-    await this.modPage.waitAndClick(e.publicChatButton);
+    await ensurePublicChatOpen(this.modPage);
 
     const { page } = this.modPage;
-    await page.locator(e.unmuteMicButton).focus();
-    await page.keyboard.down('m');
-    await this.modPage.hasElement(e.muteMicButton, 'PTT should open the microphone');
+    if (isLiveKit) {
+      await this.userPage.waitAndClick(e.joinAudio);
+      await connectMicrophone(this.userPage);
+    }
 
-    await page.locator(e.chatBox).focus();
-    await page.keyboard.up('m');
-    await this.modPage.hasElement(e.unmuteMicButton, 'releasing PTT in chat should mute the microphone');
+    const checkMic = async (muted: boolean) => {
+      await expect(async () => {
+        const local = await getLocalMicState(page);
+        expect(local.roomState).toBe('connected');
+        if (!muted) expect(local.micPublications).toBeGreaterThan(0);
+        expect(local.allMuted).toBe(muted);
+        const remote = await getAudioPublisherIdentities(this.userPage.page);
+        expect(remote.length).toBe(muted ? 0 : 1);
+      }).toPass({ timeout: ELEMENT_WAIT_LONGER_TIME });
+    };
+    const down = async () => {
+      await page.locator(e.unmuteMicButton).focus();
+      await page.keyboard.down('m');
+      if (isLiveKit) await checkMic(false);
+      else await this.modPage.hasElement(e.muteMicButton, 'PTT should publish microphone audio');
+    };
+    const up = async () => {
+      await page.keyboard.up('m');
+      if (isLiveKit) await checkMic(true);
+      else await this.modPage.hasElement(e.unmuteMicButton, 'PTT should mute microphone');
+    };
 
-    await page.locator(e.unmuteMicButton).focus();
-    await page.keyboard.down('m');
-    await this.modPage.hasElement(e.muteMicButton, 'PTT should open after the previous release');
-    await page.keyboard.down('Control');
-    await page.keyboard.up('m');
-    await this.modPage.hasElement(e.unmuteMicButton, 'releasing PTT with a modifier held should mute the microphone');
-    await page.keyboard.up('Control');
-
-    await page.locator(e.unmuteMicButton).focus();
-    await page.keyboard.down('m');
-    await this.modPage.hasElement(e.muteMicButton, 'PTT should remain usable after guarded key-up');
-    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
-    await this.modPage.hasElement(e.unmuteMicButton, 'losing window focus should release PTT');
+    await down();
+    if (scenario === 'focus') await page.locator(e.chatBox).focus();
+    if (scenario === 'Control' || scenario === 'Alt') await page.keyboard.down(scenario);
+    if (scenario === 'blur') await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    if (scenario === 'visibility') {
+      const canSimulateVisibility = await page.evaluate(() => {
+        const descriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+        return !descriptor || descriptor.configurable;
+      });
+      expect(canSimulateVisibility, 'test browser must permit a synthetic hidden visibility state').toBe(true);
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    }
+    if (scenario === 'blur' || scenario === 'visibility') {
+      if (isLiveKit) await checkMic(true);
+      else await this.modPage.hasElement(e.unmuteMicButton, 'losing focus must release PTT');
+    }
+    await up();
+    if (scenario === 'Control' || scenario === 'Alt') await page.keyboard.up(scenario);
+    if (scenario === 'visibility') {
+      await page.evaluate(() => {
+        Reflect.deleteProperty(document, 'visibilityState');
+      });
+    }
+    // A fresh publication must be possible after every release path.
+    await down();
+    await up();
   }
 
   async muteYourselfByButton() {

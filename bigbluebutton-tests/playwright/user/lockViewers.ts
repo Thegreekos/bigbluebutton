@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 
-import { hoverLastMessage } from '../chat/util';
+import { ensurePublicChatOpen, hoverLastMessage } from '../chat/util';
 import { ELEMENT_WAIT_LONGER_TIME, ELEMENT_WAIT_TIME, USER_LEFT_NOTIFICATION_WAIT_TIME } from '../core/constants';
 import { elements as e } from '../core/elements';
 import { linkIssue } from '../core/helpers';
@@ -155,27 +155,46 @@ export class LockViewers extends MultiUsers {
   }
 
   async rapidLockSettingsSavesPreserveUntouchedPermissions() {
-    await openLockViewers(this.modPage);
-    await this.modPage.waitAndClick(e.participantPermissionsTab);
-    await this.modPage.waitAndClickElement(e.lockPublicChat);
-    await this.modPage.waitAndClick(e.applyLockSettings);
+    await ensurePublicChatOpen(this.modPage);
+    await ensurePublicChatOpen(this.userPage);
 
-    await openLockViewers(this.modPage);
-    await this.modPage.waitAndClick(e.participantPermissionsTab);
-    await this.modPage.waitAndClickElement(e.lockPublicChat);
-    await this.modPage.waitAndClick(e.applyLockSettings);
+    for (let round = 0; round < 3; round++) {
+      const save = async (selector: string) => {
+        await openLockViewers(this.modPage);
+        await this.modPage.page.locator(e.participantPermissionsTab).click();
+        await this.modPage.waitAndClickElement(selector);
+        await this.modPage.waitAndClick(e.applyLockSettings);
+        // The custom client closes only after the authoritative subscription
+        // confirms; RC4 closes immediately. Attendee checks below supply the
+        // authoritative barrier in both versions.
+        await expect(this.modPage.page.locator(e.applyLockSettings)).toBeHidden();
+      };
 
-    await openLockViewers(this.modPage);
-    await this.modPage.waitAndClick(e.participantPermissionsTab);
-    await this.modPage.waitAndClickElement(e.lockShareMicrophone);
-    await this.modPage.waitAndClick(e.applyLockSettings);
+      await save(e.lockPublicChat);
+      await expect(this.userPage.page.locator(e.chatBox)).toBeDisabled();
+      await save(e.lockPublicChat);
+      await expect(this.userPage.page.locator(e.chatBox)).toBeEnabled();
+      // Deliberately no sleep between the confirmed ON state and this save.
+      await save(e.lockShareMicrophone);
+      await expect(this.userPage.page.locator(e.chatBox)).toBeEnabled();
 
-    await this.userPage.waitAndClick(e.messagesSidebarButton);
-    await this.userPage.waitAndClick(e.publicChatButton);
-    await this.userPage.hasElementEnabled(
-      e.chatBox,
-      'a later microphone lock should not re-lock public chat that was just enabled',
-    );
+      const message = `lock-e2e-${Date.now()}-${round}`;
+      await this.userPage.fill(e.chatBox, message);
+      await this.userPage.waitAndClick(e.sendButton);
+      await ensurePublicChatOpen(this.modPage);
+      await expect(this.modPage.page.locator(e.chatUserMessageText).filter({ hasText: message })).toBeVisible();
+      if (round < 2) await save(e.lockShareMicrophone);
+    }
+
+    await this.userPage.page.reload();
+    if (this.userPage.settings?.autoJoinAudioModal) await this.userPage.closeAudioModal();
+    await ensurePublicChatOpen(this.userPage);
+    await expect(this.userPage.page.locator(e.chatBox)).toBeEnabled();
+    const message = `lock-reconnect-${Date.now()}`;
+    await this.userPage.fill(e.chatBox, message);
+    await this.userPage.waitAndClick(e.sendButton);
+    await ensurePublicChatOpen(this.modPage);
+    await expect(this.modPage.page.locator(e.chatUserMessageText).filter({ hasText: message })).toBeVisible();
   }
 
   async lockSendPublicChatMessages() {

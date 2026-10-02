@@ -1,4 +1,3 @@
-import { checkRootPermission } from '../core/helpers';
 import { test } from '../core/setup/fixtures';
 import { ANNOTATION_HISTORY_STREAM_FIELD, Reconnection } from './reconnection';
 import { routeGraphqlSockets } from './util';
@@ -18,16 +17,17 @@ test.describe.parallel('Reconnection', () => {
   );
 
   test('Chat', async ({ browser, context, page }, testInfo) => {
-    await checkRootPermission(); // check sudo permission before starting test
+    const graphqlSockets = await routeGraphqlSockets(page, []);
     const reconnection = new Reconnection(browser, context);
     await reconnection.initModPage(page, { testInfo });
-    await reconnection.chat();
+    await reconnection.initUserPage(context, { testInfo });
+    await reconnection.chat(graphqlSockets);
   });
 
   test('Audio', async ({ browser, context, page }, testInfo) => {
-    await checkRootPermission(); // check sudo permission before starting test
+    const graphqlSockets = await routeGraphqlSockets(page, []);
     const reconnection = new Reconnection(browser, context);
     await reconnection.initModPage(page, { testInfo });
-    await reconnection.microphone();
+    await reconnection.microphone(graphqlSockets);
   });
 });

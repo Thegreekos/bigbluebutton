@@ -16,6 +16,15 @@ export async function openPublicChat(testPage: Page) {
   await testPage.hasElement(e.chatOptions, 'should display the chat options menu button');
 }
 
+// RC4 opens Public Chat directly in the Messages sidebar: there is no separate
+// publicChatButton once the textarea is visible. Do not toggle an already open sidebar.
+export async function ensurePublicChatOpen(testPage: Page): Promise<void> {
+  if (!(await testPage.page.locator(e.chatBox).isVisible())) {
+    await testPage.waitAndClick(e.messagesSidebarButton);
+  }
+  await expect(testPage.page.locator(e.chatBox)).toBeVisible();
+}
+
 export async function openPrivateChat(testPage: Page) {
   const { chatEnabled } = testPage.settings || {};
   await testPage.waitAndClick(e.usersListSidebarButton);
