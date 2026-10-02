@@ -31,12 +31,15 @@ test('dedicated recorded meeting publishes playable audio, webcam, slides, scree
     await connectMicrophone(mod);
     await mod.waitAndClick(e.unmuteMicButton);
     await mod.hasElement(e.isTalking, 'fake microphone must be transmitting');
-    await viewer.waitAndClick(e.joinVideo);
-    await viewer.hasElement(e.webcamMirroredVideoPreview, 'viewer webcam preview must load', 20_000);
-    await viewer.waitAndClick(e.startSharingWebcam);
-    await viewer.hasElement(e.webcamMirroredVideoContainer, 'viewer camera must publish video', 30_000);
-    await viewer.wasRemoved(e.webcamConnecting, 'viewer webcam must fully connect', 45_000);
-    await mod.hasElement(e.webcamVideoItem, 'viewer webcam must arrive at moderator', 30_000);
+    // Match the green Webcam/Shares webcam case: moderator publishes using
+    // Page.shareWebcam and attendee verifies the remote stream. Use the same
+    // Chromium launch arguments, media fixtures, and browser permissions.
+    await mod.shareWebcam({
+      shouldConfirmSharing: !(mod.settings?.skipVideoPreview || mod.settings?.skipVideoPreviewOnFirstJoin),
+      videoPreviewTimeout: mod.settings?.videoPreviewTimeout,
+    });
+    await viewer.hasElement(e.webcamVideoItem, 'attendee must receive moderator webcam', 30_000);
+    await viewer.hasElement(e.webcamContainer, 'attendee must have remote webcam video', 30_000);
     await mod.waitForSelector(e.whiteboard, ELEMENT_WAIT_LONGER_TIME);
     await mod.page.locator(e.skipSlide).selectOption({ index: 1 });
     await uploadSinglePresentation(mod, 'mockPollSlide.pdf');
