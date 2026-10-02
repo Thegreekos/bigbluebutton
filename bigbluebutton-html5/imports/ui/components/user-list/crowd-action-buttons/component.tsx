@@ -1,4 +1,4 @@
-import React, { memo, useRef } from 'react';
+import React, { memo } from 'react';
 import { useIntl, defineMessages } from 'react-intl';
 import { useMutation } from '@apollo/client';
 import logger from '/imports/startup/client/logger';
@@ -29,8 +29,6 @@ const intlMessages = defineMessages({
 });
 
 const CrowdActionButtons: React.FC = () => {
-  // Survives closing/reopening the dialog, without changing the shared subscription store.
-  const lastConfirmedLockSettings = useRef<Record<string, unknown> | null>(null);
   const intl = useIntl();
   const [setMuted] = useMutation(SET_MUTED);
   const lockViewersModal = useModalRegistration({ id: 'lockViewersModal', priority: 'low' });
@@ -69,7 +67,6 @@ const CrowdActionButtons: React.FC = () => {
     <>
       {lockViewersModal.isOpen && (
         <LockViewersContainer
-          lastConfirmedLockSettings={lastConfirmedLockSettings}
           onRequestClose={() => lockViewersModal.close()}
           isOpen={lockViewersModal.isOpen}
           setIsOpen={lockViewersModal.close}

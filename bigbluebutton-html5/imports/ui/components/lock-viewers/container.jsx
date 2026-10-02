@@ -19,21 +19,21 @@ const LockViewersContainer = (props) => {
   const [setLobbyMessageMutation] = useMutation(SET_LOBBY_MESSAGE);
 
   const updateLockSettings = (lockSettings) => {
-    const variables = {
-      disableCam: lockSettings.disableCam,
-      disableMic: lockSettings.disableMic,
-      disablePrivChat: lockSettings.disablePrivateChat,
-      disablePubChat: lockSettings.disablePublicChat,
-      disableNotes: lockSettings.disableNotes,
-      hideUserList: lockSettings.hideUserList,
-      lockOnJoin: lockSettings.lockOnJoin,
-      lockOnJoinConfigurable: lockSettings.lockOnJoinConfigurable,
-      hideViewersCursor: lockSettings.hideViewersCursor,
-      hideViewersAnnotation: lockSettings.hideViewersAnnotation,
-      presenterPolicy: lockSettings.presenterPolicy,
-    };
-
-    return setLockSettingsProps({ variables });
+    setLockSettingsProps({
+      variables: {
+        disableCam: lockSettings.disableCam,
+        disableMic: lockSettings.disableMic,
+        disablePrivChat: lockSettings.disablePrivateChat,
+        disablePubChat: lockSettings.disablePublicChat,
+        disableNotes: lockSettings.disableNotes,
+        hideUserList: lockSettings.hideUserList,
+        lockOnJoin: lockSettings.lockOnJoin,
+        lockOnJoinConfigurable: lockSettings.lockOnJoinConfigurable,
+        hideViewersCursor: lockSettings.hideViewersCursor,
+        hideViewersAnnotation: lockSettings.hideViewersAnnotation,
+        presenterPolicy: lockSettings.presenterPolicy,
+      },
+    });
   };
 
   const updateWebcamsOnlyForModerator = (webcamsOnlyForModerator) => {
