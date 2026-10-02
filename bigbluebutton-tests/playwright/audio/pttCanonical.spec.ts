@@ -233,6 +233,15 @@ async function readServerVoice(page: import('@playwright/test').Page) {
           document.dispatchEvent(new Event('visibilitychange'));
         });
       }
+      if (scenario === 'blur' || scenario === 'visibility') {
+        await capture('focus-loss-before-keyup');
+        await expectVoice(true);
+        const beforeKeyup = await getRemoteAudioStates(audio.userPage.page);
+        expect(
+          beforeKeyup.every((state) => state.unmuted === 0),
+          'focus loss alone must mute remote audio',
+        ).toBe(true);
+      }
       await release('first-up');
       if (scenario === 'visibility') {
         await modRaw.evaluate(() => {
