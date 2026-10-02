@@ -16,6 +16,15 @@ const PRESENTATION_POLICY = {
   FREE_FOR_ALL: 'freeForAll',
 };
 
+const LOCK_SETTING_KEYS = [
+  'disableCam', 'disableMic', 'disablePrivateChat', 'disablePublicChat',
+  'disableNotes', 'hideUserList', 'lockOnJoin', 'lockOnJoinConfigurable',
+  'hideViewersCursor', 'hideViewersAnnotation', 'presenterPolicy',
+];
+
+const matchesLockSettings = (actual, expected) => actual && expected
+  && LOCK_SETTING_KEYS.every((key) => actual[key] === expected[key]);
+
 const intlMessages = defineMessages({
   lockViewersTitle: {
     id: 'app.lock-viewers.title',
@@ -180,6 +189,7 @@ const propTypes = {
     }),
   }).isRequired,
   updateLockSettings: PropTypes.func.isRequired,
+  lastConfirmedLockSettings: PropTypes.shape({ current: PropTypes.shape({}) }).isRequired,
   updateWebcamsOnlyForModerator: PropTypes.func.isRequired,
   changeGuestPolicy: PropTypes.func.isRequired,
   setLobbyMessage: PropTypes.func.isRequired,
@@ -207,7 +217,13 @@ class LockViewersComponent extends Component {
       lobbyMessageEnabled: !!props.guestLobbyMessage,
       presentationPolicy,
       unsavedModalOpen: false,
+      isSaving: false,
+      saveError: false,
     };
+
+    this.saveInFlight = false;
+    this.pendingLockSettings = null;
+    this.confirmationTimeout = null;
 
     this.lobbyMessageDraft = props.guestLobbyMessage || '';
     this.lobbyMessageInitial = props.guestLobbyMessage || '';
@@ -227,6 +243,22 @@ class LockViewersComponent extends Component {
     this.handleIgnoreChanges = this.handleIgnoreChanges.bind(this);
   }
 
+  componentDidUpdate() {
+    const { meeting, lastConfirmedLockSettings } = this.props;
+    if (this.pendingLockSettings
+      && matchesLockSettings(meeting.lockSettings, this.pendingLockSettings)) {
+      const confirmed = this.pendingLockSettings;
+      this.pendingLockSettings = null;
+      clearTimeout(this.confirmationTimeout);
+      lastConfirmedLockSettings.current = confirmed;
+      this.finishSave();
+    }
+  }
+
+  componentWillUnmount() {
+    clearTimeout(this.confirmationTimeout);
+  }
+
   handleLobbyMessageChange(value) {
     this.lobbyMessageDraft = value;
   }
@@ -240,6 +272,7 @@ class LockViewersComponent extends Component {
   }
 
   handleClose() {
+    if (this.saveInFlight) return;
     const { closeModal } = this.props;
     if (this.hasChanges()) {
       this.setState({ unsavedModalOpen: true });
@@ -253,27 +286,60 @@ class LockViewersComponent extends Component {
     this.setState({ unsavedModalOpen: false }, closeModal);
   }
 
-  handleSave() {
+  async handleSave() {
+    if (this.saveInFlight || !this.isAuthoritative()) return;
     const {
-      closeModal,
-      updateLockSettings,
-      updateWebcamsOnlyForModerator,
-      changeGuestPolicy,
-      setLobbyMessage,
+      updateLockSettings, lastConfirmedLockSettings,
     } = this.props;
 
     const {
       lockSettingsProps,
-      usersProp,
-      guestPolicy,
-      lobbyMessageEnabled,
       presentationPolicy,
     } = this.state;
 
     const finalLockSettings = { ...lockSettingsProps };
     finalLockSettings.presenterPolicy = presentationPolicy;
 
-    updateLockSettings(finalLockSettings);
+    this.saveInFlight = true;
+    this.setState({ isSaving: true, saveError: false });
+    try {
+      const result = await updateLockSettings(finalLockSettings);
+      if (result?.data?.meetingLockSettingsSetProps !== true) {
+        throw new Error('Lock settings were not accepted');
+      }
+    } catch (error) {
+      this.saveInFlight = false;
+      this.setState({ isSaving: false, saveError: true });
+      return;
+    }
+
+    // The mutation only acknowledges the command. Wait for the server's
+    // subscription to confirm the complete settings before allowing another save.
+    lastConfirmedLockSettings.current = finalLockSettings;
+    this.pendingLockSettings = finalLockSettings;
+    this.confirmationTimeout = setTimeout(() => {
+      this.pendingLockSettings = null;
+      this.saveInFlight = false;
+      this.setState({ isSaving: false, saveError: true });
+    }, 15000);
+    this.componentDidUpdate();
+  }
+
+  handleSelectTab(tabIndex) {
+    this.setState({ selectedTab: tabIndex });
+  }
+
+  isAuthoritative() {
+    const { lastConfirmedLockSettings, meeting } = this.props;
+    const expected = lastConfirmedLockSettings.current;
+    return !expected || matchesLockSettings(meeting.lockSettings, expected);
+  }
+
+  finishSave() {
+    const {
+      closeModal, updateWebcamsOnlyForModerator, changeGuestPolicy, setLobbyMessage,
+    } = this.props;
+    const { usersProp, guestPolicy, lobbyMessageEnabled } = this.state;
     updateWebcamsOnlyForModerator(usersProp.webcamsOnlyForModerator);
     changeGuestPolicy(guestPolicy);
 
@@ -284,10 +350,6 @@ class LockViewersComponent extends Component {
     }
 
     closeModal();
-  }
-
-  handleSelectTab(tabIndex) {
-    this.setState({ selectedTab: tabIndex });
   }
 
   hasChanges() {
@@ -580,10 +642,11 @@ class LockViewersComponent extends Component {
       intl,
       isOpen,
       priority,
-      closeModal,
     } = this.props;
 
-    const { selectedTab, unsavedModalOpen } = this.state;
+    const {
+      selectedTab, unsavedModalOpen, isSaving, saveError,
+    } = this.state;
 
     if (unsavedModalOpen) {
       return (
@@ -651,14 +714,22 @@ class LockViewersComponent extends Component {
           </Styled.SettingsTabPanel>
         </Styled.SettingsTabs>
         <Styled.ActionsContainer>
+          {!this.isAuthoritative() && (
+            <span role="status">Waiting for the latest server permissions</span>
+          )}
+          {saveError && (
+            <span role="alert">Lock settings were not confirmed. Please retry.</span>
+          )}
           <Styled.ActionButton
-            onClick={closeModal}
+            onClick={this.handleClose}
+            disabled={isSaving}
             data-test="cancelLockSettings"
           >
             {intl.formatMessage(intlMessages.buttonCancel)}
           </Styled.ActionButton>
           <Styled.ActionButtonPrimary
             onClick={() => this.handleSave()}
+            disabled={isSaving || !this.isAuthoritative()}
             data-test="applyLockSettings"
           >
             {intl.formatMessage(intlMessages.buttonApply)}
