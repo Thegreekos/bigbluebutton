@@ -1,0 +1,31 @@
+[Unit]
+Description=BigBlueButton LGU Activities scoped identity adapter
+After=network-online.target bbb-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bigbluebutton
+Group=bigbluebutton
+WorkingDirectory=/usr/local/bigbluebutton/lgu-activities
+ExecStart=/usr/bin/node server/runtime.cjs
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

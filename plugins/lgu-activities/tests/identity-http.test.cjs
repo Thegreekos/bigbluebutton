@@ -52,3 +52,13 @@ test('HTTP handler has no GET/CORS fallback and requires trusted HTTPS origin ou
   assert.equal((await fetch(`${h.origin}/api/lgu-activities/v1/arbitrary`)).status, 404);
   assert.throws(() => createIdentityHttpHandler({ service: h.fixture.service, origin: h.origin }));
 });
+
+test('self identity is caller-only for student, has no roster/token and rejects browser identity fields', async (t) => {
+  const h = await harness(t);
+  const response = await h.post('self', {}, h.fixture.proofs.studentA);
+  const body = await response.json();
+  assert.equal(response.status, 200); assert.equal(body.identity.personId, '29');
+  assert.equal(body.identity.role, 'student'); assert.equal(body.classroom, undefined);
+  assert.equal(body.identityToken, undefined);
+  assert.equal((await h.post('self', { role: 'teacher' }, h.fixture.proofs.studentA)).status, 400);
+});

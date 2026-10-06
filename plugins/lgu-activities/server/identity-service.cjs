@@ -130,6 +130,13 @@ async function createIdentityService(options) {
   }
 
   return {
+    async identifySelf(proof, body) {
+      exactBody(body, []);
+      const auth = await authenticate(proof);
+      return { identity: { personId: auth.core.personId, role: auth.core.role,
+        meetingId: auth.bbb.meetingId, participantId: auth.bbb.participantId },
+      expiresAt: Math.min(clock() + 120, auth.core.expiresAt) };
+    },
     async identify(proof, body) {
       exactBody(body, []);
       const auth = await authenticate(proof);

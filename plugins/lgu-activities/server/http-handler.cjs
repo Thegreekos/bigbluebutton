@@ -7,6 +7,7 @@ function createIdentityHttpHandler({ service, origin, allowLoopback = false }) {
     throw new TypeError('Exact HTTPS browser origin required');
   }
   const routes = new Map([
+    ['/api/lgu-activities/v1/self', 'identifySelf'],
     ['/api/lgu-activities/v1/identity', 'identify'],
     ['/api/lgu-activities/v1/contexts', 'createContext'],
     ['/api/lgu-activities/v1/identities', 'issueIdentity'],
@@ -41,7 +42,9 @@ function createIdentityHttpHandler({ service, origin, allowLoopback = false }) {
       reply(200, await service[method](proof, body));
     } catch (error) {
       reply(error instanceof ContractError ? error.status : 503,
-        { error: error instanceof ContractError ? error.code : 'INTEGRATION_UNAVAILABLE' });
+        { error: error instanceof ContractError ? error.code : 'INTEGRATION_UNAVAILABLE',
+          ...(error instanceof ContractError && error.code === 'CORE_IDENTITY_INACTIVE' && error.mismatches?.length
+            ? { mismatches: error.mismatches.filter((field) => ['personId', 'meetingId', 'role', 'kind'].includes(field)) } : {}) });
     }
   };
 }

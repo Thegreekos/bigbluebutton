@@ -51,10 +51,33 @@ test('BBB moderator requires introspected teacher role, not student authority pr
   assert.equal((await verify('fixture-teacher-token', teacher)).role, 'teacher');
 });
 
+test('Core created BBB room accepts active bound identity; inactive and ended still deny', async () => {
+  const result = active();
+  result.data.session.status = 'created';
+  const verify = createCoreCredentialVerifier({ clock: () => now, readCredential: reader,
+    fetchImpl: async () => Response.json(result) });
+  assert.equal((await verify('fixture', bbb)).personId, bbb.extId);
+  result.data.active = false;
+  await rejects(verify('fixture', bbb), 'CORE_IDENTITY_INACTIVE', 403);
+  result.data.active = true; result.data.session.status = 'ended';
+  await rejects(verify('fixture', bbb), 'CORE_SESSION_INVALID', 403);
+});
+
 test('inactive person mismatch denies and never exposes response subject or mismatch data', async () => {
   const verify = createCoreCredentialVerifier({ readCredential: reader,
     fetchImpl: async () => Response.json({ data: { active: false, mismatches: ['personId'], subject: { personId: 'do-not-disclose' } } }) });
   await rejects(verify('fixture-student-B-token', bbb), 'CORE_IDENTITY_INACTIVE', 403);
+});
+
+test('inactive mismatch evidence contains only allowlisted field-name enums, never subject values', async () => {
+  const verify = createCoreCredentialVerifier({ readCredential: reader,
+    fetchImpl: async () => Response.json({ data: { active: false,
+      mismatches: ['personId', 'secret-value', 'personId', 'role'], subject: { personId: 'not-for-output' } } }) });
+  await assert.rejects(verify('fixture', bbb), e => {
+    assert.deepEqual(e.mismatches, ['personId', 'role']);
+    assert.doesNotMatch(JSON.stringify(e), /not-for-output|secret-value/);
+    return e.code === 'CORE_IDENTITY_INACTIVE';
+  });
 });
 
 for (const [status, code] of [[400, 'CORE_INTROSPECTION_REQUEST_INVALID'], [401, 'CORE_SERVICE_AUTH_FAILED'],

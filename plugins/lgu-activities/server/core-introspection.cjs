@@ -70,7 +70,13 @@ function createCoreCredentialVerifier({ fetchImpl = fetch, readCredential = read
     try { result = await response.json(); }
     catch { throw new ContractError('CORE_INTROSPECTION_RESPONSE_INVALID', 503); }
     const data = result?.data;
-    if (data?.active === false) throw new ContractError('CORE_IDENTITY_INACTIVE', 403);
+    if (data?.active === false) {
+      const error = new ContractError('CORE_IDENTITY_INACTIVE', 403);
+      // Only field-name enums; never disclose Core subject values or raw errors.
+      error.mismatches = Array.isArray(data.mismatches)
+        ? [...new Set(data.mismatches.filter((field) => ['personId', 'meetingId', 'role', 'kind'].includes(field)))] : [];
+      throw error;
+    }
     if (data?.active !== true || result.error !== null || result.meta?.readOnly !== true
       || result.meta?.preview !== false || result.meta?.dryRun !== false || data.reason !== 'OK') {
       throw new ContractError('CORE_INTROSPECTION_RESPONSE_INVALID', 503);
@@ -82,7 +88,9 @@ function createCoreCredentialVerifier({ fetchImpl = fetch, readCredential = read
       || (Array.isArray(data.mismatches) && data.mismatches.length)) {
       throw new ContractError('CORE_IDENTITY_BINDING_MISMATCH', 403);
     }
-    if (!id(subject.lessonSessionId) || session?.provider !== 'bbb4' || session?.status !== 'active'
+    // Core's launched BBB room is `created` while its verified lesson identity
+    // is already active. Do not confuse that lifecycle label with token activity.
+    if (!id(subject.lessonSessionId) || session?.provider !== 'bbb4' || !['created', 'active'].includes(session?.status)
       || ![session?.lessonId, session?.classId, session?.teacherPersonId].every(id)
       || (subject.role === 'teacher' && session.teacherPersonId !== subject.personId)
       || (subject.role === 'student' && session.teacherPersonId === subject.personId)) {

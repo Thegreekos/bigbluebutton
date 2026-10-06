@@ -1,8 +1,8 @@
 # LGU Activities — Phase 2 identity preparation
 
-Independent plugin package inside the BBB4 workspace. No BBB core changes, LGU repository changes, database migrations or deployment. Independent of LGU PR #46; no PR ref or unreleased LGU dependency.
+Independent plugin package inside the BBB4 workspace. No BBB core changes, LGU repository changes or database migrations. Scoped adapter service/routes/assets are now installed for acceptance only. Independent of LGU PR #46; no PR ref or unreleased LGU dependency.
 
-Phase 2 continues from `f21c4e1ab0` on `feat/lgu-activities-plugin`. The follow-up from `50faeb0979` now wires the real Core introspection provider and existing identity adapter. The one-time service credential was received/verified and transfer key/receiver removed. **Real teacher/student acceptance remains blocked, not simulated as a pass.** See `IDENTITY_CONTRACT.md` and current `CORE_INTROSPECTION_VALIDATION.md`; previous phase reports are historical.
+Phase 2 continues from `f21c4e1ab0` on `feat/lgu-activities-plugin`. Current evidence is `SCOPED_ACCEPTANCE.md`: **real Teacher / Student A / Student B, different canonical identities, cross-student misuse and reload/reconnect passed** through the running scoped adapter. Full READY remains NO: true non-Core guest and officially loaded LGU Live UI checks remain blocked. Earlier phase reports are historical; fixtures do not substitute for those gates.
 
 ## Investigated baseline
 
@@ -26,13 +26,17 @@ No environment variables or `.env` are required for local fixtures. Production c
 
 For an explicitly authorized, non-personal live **service authentication only** check, run `scripts/probe-core-service-auth.cjs --live-service-auth-only` using Node as `bigbluebutton`. It sends intentionally invalid token/fictional bindings, requires `HTTP 200 active:false`, and prints only sanitized PASS/FAIL. It is not teacher/student acceptance and must not be used to mint identity.
 
-## Future controlled integration — NOT performed
+## Scoped installation and remaining plugin gate
 
-Like Lesson Assistant, assets can eventually be hosted separately on the BBB HTTPS origin under `/plugins/lgu-activities/`. Install immutable release files before switching the root manifest; keep matching bundle/SRI/manifest together. Do not overwrite Lesson Assistant assets. This generated SRI assumes same-origin hosting (the current BBB loader does not set `crossorigin` for cross-origin SRI).
+Built assets are hosted on the BBB HTTPS origin under `/plugins/lgu-activities/` (immutable release `0.2.0` + matching manifest/SRI). Lesson Assistant assets remain unchanged. This generated SRI assumes same-origin hosting (the current BBB loader does not set `crossorigin` for cross-origin SRI).
 
 Before activation use the implemented real Core introspection composition, confirm normal context meeting binding, mount `server/http-handler.cjs` behind the BBB HTTPS origin, configure existing activity-signing keys/key rotation/rate limits/context storage, and select a server-approved `liveActivityId` through existing per-plugin settings. The Core token's current participant binding is derived from the independently authenticated BBB session after successful introspection, not a new pre-join Core claim. No migration is assumed. Stop for schema review if existing backend storage cannot support the integration without one.
 
-Only then authorize one test meeting via `/create` parameter `pluginManifests=[{"url":"https://<bbb-host>/plugins/lgu-activities/manifest.json"}]`. Preserve other required plugins. Do not change global activation. A fresh meeting captures the manifest. No asset copying, backend mounting, nginx/config change, service restart or meeting activation occurs in this phase.
+The running `bbb-lgu-activities` service is loopback `127.0.0.1:4703`, `User=bigbluebutton`, hardened, installed but not enabled for boot. Root-managed runtime is `/usr/local/bigbluebutton/lgu-activities`; config `/etc/bigbluebutton/lgu-activities/adapter.json` restricts the verified external meeting ID to one Portal lesson. Empty allowed activity list deliberately prevents game/context creation until an approved catalog ID exists. `/healthz` is loopback-only; nginx forwards only the five fixed identity routes, with access log and proxy cache disabled. No global manifest/config or BBB core restart.
+
+The current Portal room was created with Lesson Assistant only. Official BBB plugin activation requires Core's scoped `/create` parameter `pluginManifests=[{"url":"https://<bbb-host>/plugins/lgu-activities/manifest.json"}]`, preserving other required plugins, plus non-secret per-plugin `liveActivityId` and matching server-approved activity allowlist. A fresh meeting captures the manifest. There is no supported existing-meeting plugin insertion API; do not mutate DB, inject scripts manually or enable globally to claim a UI pass. Core source is not mounted here; this remaining caller change is not applied.
+
+Rollback: stop `bbb-lgu-activities`; remove only `/etc/bigbluebutton/nginx/lgu-activities.nginx` after `nginx -t` and reload nginx. Remove scoped manifest from the Core caller for future meetings. Installed public assets/unit may remain inert; preserve existing Core service credential and activity signing key (never print/delete them blindly). To freeze acceptance without removal set `allowedMeetingIds: []` in protected host config and restart only this adapter. No migration or BBB package rebuild.
 
 Real BBB acceptance remains a separate controlled gate: moderator sees exactly one LGU Activities item in Apps; viewer sees none; panel opens/closes/reopens with Μαθαίνω, Παίζω, Live; role demotion removes the entry. Verify alongside Lesson Assistant without affecting it.
 
