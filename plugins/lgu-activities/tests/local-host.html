@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LGU Activities — local SDK host harness</title>
+  <style>
+    body { margin: 0; color: #172b43; background: #edf1f7; font: 16px/1.5 system-ui, sans-serif; }
+    header { background: #172b43; color: white; padding: 20px; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 8px 0; }
+    nav { padding: 20px; }
+    button, select { padding: 10px 14px; margin: 4px; border-radius: 8px; border: 1px solid #b5c2d2; font: inherit; }
+    button { cursor: pointer; background: white; }
+    button:focus-visible { outline: 3px solid #3c50a0; }
+    #sidekick { background: white; border-radius: 16px; margin: 20px; max-width: 440px; overflow: hidden; box-shadow: 0 8px 32px #172b4320; }
+    #sidekick[hidden] { display: none; }
+    #plugin-root { display: none; }
+  </style>
+</head>
+<body>
+  <header><h1>Local BBB4 SDK host harness</h1>
+    <p>Loopback only · simulated meeting/roles · no Core/LGU calls · NOT a live BBB meeting.</p>
+    <label>BBB role <select id="role"><option>MODERATOR</option><option>VIEWER</option><option>LOADING</option><option>ERROR</option></select></label>
+  </header>
+  <nav aria-label="Apps"><h2>Apps</h2><div id="apps"></div></nav>
+  <aside id="sidekick" hidden aria-label="Teacher panel"><button id="close" type="button">Κλείσιμο panel</button><div id="content"></div></aside>
+  <div id="plugin-root"></div>
+  <script src="/react.js"></script>
+  <script src="/host.js"></script>
+</body>
+</html>

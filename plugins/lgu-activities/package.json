@@ -1,0 +1,25 @@
+{
+  "name": "bbb-plugin-lgu-activities",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent BBB4 LGU Activities integration shell; no game engine or backend calls.",
+  "scripts": {
+    "build": "webpack --mode production && node scripts/build-manifest.cjs",
+    "build-bundle": "npm run build",
+    "test": "node --test tests/*.test.cjs",
+    "check": "npm test && npm run build && node scripts/check-bundle.cjs",
+    "test:browser": "node tests/browser-smoke.cjs",
+    "start": "node scripts/serve-local.cjs"
+  },
+  "dependencies": {
+    "bigbluebutton-html-plugin-sdk": "0.1.26",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "playwright": "1.56.0",
+    "react-test-renderer": "18.3.1",
+    "webpack": "5.111.1",
+    "webpack-cli": "6.0.1"
+  }
+}

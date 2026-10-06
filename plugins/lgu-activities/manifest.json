@@ -1,0 +1,8 @@
+{
+  "requiredSdkVersion": "^0.1.26",
+  "name": "LGUActivities",
+  "version": "0.1.0",
+  "javascriptEntrypointUrl": "releases/0.1.0/LGUActivities.js",
+  "enabledForBreakoutRooms": false,
+  "eventPersistence": { "isEnabled": false }
+}
