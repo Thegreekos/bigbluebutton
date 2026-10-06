@@ -19,6 +19,13 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/registration.js'
   },
 });
 const { PANEL_ID, useActivitiesRegistration } = registration.exports;
+const unavailableApi = () => ({
+  useCurrentUser: () => ({ loading: false, data: { role: 'MODERATOR' } }),
+  useCustomQuery: () => ({ loading: false, data: { user_metadata: [] } }),
+  usePluginSettings: () => ({ loading: false, data: {} }),
+  useCustomSubscription: () => ({ loading: false, data: { user: [] } }),
+  getSessionToken: () => undefined,
+});
 
 test('one sidekick, no explicit gallery duplicate, stable rerender and cleanup', () => {
   let items = [];
@@ -48,14 +55,15 @@ test('one sidekick, no explicit gallery duplicate, stable rerender and cleanup',
   assert.equal(items.length, 0);
 });
 
-test('three choices only update local notice, no session or backend action', () => {
-  const pluginApi = { useCurrentUser: () => ({ loading: false, data: { role: 'MODERATOR' } }) };
+test('Learn/Play remain placeholders; Live disabled without validated Core identity', () => {
+  const pluginApi = unavailableApi();
   let root;
   act(() => { root = create(React.createElement(TeacherPanel, { pluginApi })); });
   assert.deepEqual(ACTIVITIES.map((a) => a.label), ['Μαθαίνω', 'Παίζω', 'Live']);
-  const buttons = root.root.findAllByType('button');
+  const buttons = root.root.findAllByType('button').filter((button) => button.props['data-testid']?.startsWith('lgu-activity-'));
   assert.equal(buttons.length, 3);
-  for (let i = 0; i < buttons.length; i += 1) {
+  assert.equal(buttons[2].props.disabled, true);
+  for (let i = 0; i < 2; i += 1) {
     act(() => buttons[i].props.onClick());
     assert.equal(buttons[i].props['aria-pressed'], true);
     assert.match(root.root.findByProps({ role: 'status' }).children.join(''), /Δεν ξεκίνησε δραστηριότητα/);
@@ -65,15 +73,16 @@ test('three choices only update local notice, no session or backend action', () 
 
 test('open panel fail closes and clears choice when role is lost or data errors', () => {
   let user = { loading: false, data: { role: 'MODERATOR' } };
-  const pluginApi = { useCurrentUser: () => user };
+  const pluginApi = { ...unavailableApi(), useCurrentUser: () => user };
   let root;
   act(() => { root = create(React.createElement(TeacherPanel, { pluginApi })); });
-  act(() => root.root.findAllByType('button')[2].props.onClick());
+  act(() => root.root.findAllByType('button')[0].props.onClick());
   user = { loading: false, error: new Error('lost'), data: { role: 'MODERATOR' } };
   act(() => root.update(React.createElement(TeacherPanel, { pluginApi })));
   assert.equal(root.root.findAllByType('button').length, 0);
   user = { loading: false, data: { role: 'MODERATOR' } };
   act(() => root.update(React.createElement(TeacherPanel, { pluginApi })));
-  assert.ok(root.root.findAllByType('button').every((b) => b.props['aria-pressed'] === false));
+  assert.ok(root.root.findAllByType('button').filter((b) => b.props['data-testid']?.startsWith('lgu-activity-'))
+    .every((b) => b.props['aria-pressed'] === false));
   act(() => root.unmount());
 });

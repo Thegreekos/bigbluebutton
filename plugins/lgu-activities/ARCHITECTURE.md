@@ -11,7 +11,9 @@ Target: **BBB participant → School Core identity → LGU activity session → 
 
 Phase 1 deliberately has no backend adapter, network operation, inferred School Core identity, session persistence, scoring state, or fake API. BBB `extId`/`userId` alone must not become proof of identity. The Lesson Assistant and its tokens/context must not be used as an undocumented shared state channel.
 
-## Exact next step (independent of PR #46)
+Phase 2 now implements `IDENTITY_CONTRACT.md`, a server-only reference adapter, explicit synthetic proof fixtures and a plugin client. The existing documented join userdata/Core context integration is reused independently, not Lesson Assistant memory. Live prepares a context with `lguSessionId: null`; production Core verifier and real-meeting acceptance remain blocked. No LGU audience credential, engine or session start is implemented.
+
+## Next gate (independent of PR #46)
 
 Agree and fixture-test a **versioned server-validated Live adapter contract** with the School Core/LGU owners using their currently supported APIs:
 
@@ -20,4 +22,4 @@ Agree and fixture-test a **versioned server-validated Live adapter contract** wi
 3. One canonical Core student joins that session, receives **one LGU-sourced question**, submits **one answer**, and sees the **LGU-returned result**. Teacher sees the canonical session/result state. No local answer evaluation or duplicated scoring/mastery.
 4. Test missing/expired context, viewer/unrelated teacher, wrong meeting/class, duplicate start/answer, reconnect/resume and backend unavailable. Adapter validates membership and scope on every operation.
 
-First deliverable is the approved request/response/error fixtures and adapter interface, then a mocked browser flow before a separately authorized real test meeting. Do not invent endpoint names, modify the LGU repo, wait for PR #46, introduce a database migration or deploy as part of this phase. Authentication changes require private security collaboration per `CLAUDE.md`; do not open a public security PR.
+The adapter interface, rejection fixtures and mocked browser flow are implemented. First unblock the actual Core credential verifier/binding and review the contract with its owner; then separately authorize real teacher/student meeting acceptance. `LGU_HANDOFF.md` defines subsequent token exchange/session binding/idempotent start/self join through LGU's existing engine. No claimed existing LGU route or file names were invented. No LGU source, migration or deployment was touched in Phase 2. Authentication changes require private security collaboration per `CLAUDE.md`; do not open a public security PR.

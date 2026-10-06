@@ -2,9 +2,10 @@
 // Plugin runs unchanged, with the REAL SDK and React host global.
 (() => {
   const CURRENT_USER = 'Hooks::UseCurrentUser';
+  const fixtureIdentity = new URL(location.href).searchParams.get('identity') === 'fixture';
   const roleResponse = (role) => role === 'LOADING' ? { loading: true }
     : role === 'ERROR' ? { loading: false, error: { message: 'Synthetic role error' } }
-      : { loading: false, data: { userId: 'synthetic-participant', role } };
+      : { loading: false, data: { userId: 'w_teacher', extId: '17', name: 'Synthetic teacher', role } };
   const initialRole = new URL(location.href).searchParams.get('role') || 'MODERATOR';
   document.getElementById('role').value = initialRole;
   let userResult = roleResponse(initialRole);
@@ -22,8 +23,26 @@
     detail: { hook: CURRENT_USER, data: userResult },
   }));
   window.addEventListener('PLUGIN_SUBSCRIBED_TO_BBB_CORE', (event) => {
-    if (event.detail.hook !== CURRENT_USER) throw new Error('Shell subscribed to an unexpected hook');
-    queueMicrotask(sendUser);
+    if (event.detail.hook === CURRENT_USER) { queueMicrotask(sendUser); return; }
+    const { hook, hookArguments } = event.detail;
+    let data;
+    if (hookArguments?.query?.includes('LGUActivitiesUserMetadata')) {
+      data = { data: { user_metadata: fixtureIdentity
+        ? [{ parameter: 'schoolcore_context_token', value: 'fixture-core-teacher' }] : [] } };
+    } else if (hookArguments?.query?.includes('pluginSettingsSubscription')) {
+      data = { meeting_clientPluginSettings: [{ settings: { liveActivityId: fixtureIdentity ? 'fixture-live-one' : '' } }] };
+    } else if (hookArguments?.query?.includes('LGUActivitiesPresence')) {
+      const active = { joined: true, currentlyInMeeting: true, disconnected: false, loggedOut: false, expired: false, bot: false };
+      data = { data: { user: [
+        { ...active, userId: 'w_teacher', extId: '17', name: 'Synthetic teacher' },
+        { ...active, userId: 'w_student_a', extId: '29', name: 'Same display name' },
+        { ...active, userId: 'w_student_b', extId: '31', name: 'Same display name' },
+        { ...active, userId: 'w_guest', extId: '', name: 'Same display name' },
+      ] } };
+    } else throw new Error('Unexpected SDK hook in identity harness');
+    queueMicrotask(() => window.dispatchEvent(new CustomEvent('BBB_CORE_SENT_NEW_DATA', {
+      detail: { hook, hookArguments, data: { loading: false, data } },
+    })));
   });
   document.getElementById('role').addEventListener('change', (event) => {
     const role = event.target.value;
@@ -34,6 +53,7 @@
   window.bbb_plugins = {
     'plugin-root': {
       pluginName: 'LGUActivities',
+      getSessionToken() { return fixtureIdentity ? 'fixture-bbb-teacher' : undefined; },
       setGenericContentItems(items) {
         queueMicrotask(() => {
           if (activeId && !items.some((item) => item.id === activeId)) close();

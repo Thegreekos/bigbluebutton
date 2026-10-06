@@ -1,8 +1,8 @@
 {
   "name": "bbb-plugin-lgu-activities",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Independent BBB4 LGU Activities integration shell; no game engine or backend calls.",
+  "description": "BBB4 LGU Activities identity contract and integration adapter; no game engine or LGU backend calls.",
   "scripts": {
     "build": "webpack --mode production && node scripts/build-manifest.cjs",
     "build-bundle": "npm run build",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "bigbluebutton-html-plugin-sdk": "0.1.26",
+    "jose": "6.1.3",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

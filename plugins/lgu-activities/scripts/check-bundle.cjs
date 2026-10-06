@@ -13,9 +13,13 @@ assert.equal(manifest.version, pkg.version);
 assert.equal(manifest.javascriptEntrypointUrl, `releases/${pkg.version}/LGUActivities.js`);
 assert.equal(manifest.javascriptEntrypointIntegrity,
   `sha384-${createHash('sha384').update(bundle).digest('base64')}`);
-for (const key of ['remoteDataSources', 'dataChannels', 'serverCommandsPermission', 'settingsSchema']) {
+for (const key of ['remoteDataSources', 'dataChannels', 'serverCommandsPermission']) {
   assert.equal(manifest[key], undefined, `Shell must not configure ${key}`);
 }
+assert.deepEqual(manifest.settingsSchema, [
+  { name: 'liveActivityId', label: 'Server-approved LGU activity ID', required: false, type: 'string', defaultValue: '' },
+]);
+assert.doesNotMatch(bundle.toString(), /fixture-core-|fixture-bbb-|fixture-ephemeral-key|BEGIN PRIVATE KEY/);
 assert.equal(manifest.eventPersistence.isEnabled, false);
 assert.equal(manifest.enabledForBreakoutRooms, false);
 console.log(`Bundle/manifest/SDK/SRI checks passed (${bundle.length} bytes).`);
