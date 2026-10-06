@@ -4,7 +4,7 @@ No LGU repository was inspected or changed, no PR #46 was consulted/awaited, and
 
 ## Prerequisite outside LGU
 
-Core owner supplies authoritative `verifyCoreCredential` with real subject/role/membership, BBB external meeting + internal participant binding and expiry. Reconnect issues/exchanges a new participant-bound credential for the same Core person. Confirm normal classroom context meeting binding. Mount/review the adapter only in a separately authorized environment, with keys, rate limits, existing state store and real teacher/student meeting acceptance. Without this, LGU must not accept any fixture or adapter identity as production identity.
+Authoritative `verifyCoreCredential` now uses the existing Core token introspection endpoint with server-verified BBB expected person/external meeting/role/kind. Internal BBB participant binding is established after successful introspection, not required as a pre-join Core token claim. Service authentication probe passed; real teacher/two-student acceptance has not. Confirm normal classroom context meeting binding and host/review the adapter only in a separately authorized environment, with existing signing keys, rate limits/state store and real acceptance. Without that gate, LGU must not accept any fixture or adapter identity as production identity. No new Core issuer or service credential is created.
 
 ## Required LGU-side work
 

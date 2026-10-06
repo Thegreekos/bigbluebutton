@@ -2,7 +2,7 @@
 
 Independent plugin package inside the BBB4 workspace. No BBB core changes, LGU repository changes, database migrations or deployment. Independent of LGU PR #46; no PR ref or unreleased LGU dependency.
 
-Phase 2 continues from `f21c4e1ab0` on `feat/lgu-activities-plugin`. It adds a server-only reference identity adapter and a teacher panel client. **Production Core token verification is not available in this workspace; real teacher/student acceptance is blocked, not simulated as a pass.** See `IDENTITY_CONTRACT.md` and `PHASE2_VALIDATION.md`.
+Phase 2 continues from `f21c4e1ab0` on `feat/lgu-activities-plugin`. The follow-up from `50faeb0979` now wires the real Core introspection provider and existing identity adapter. The one-time service credential was received/verified and transfer key/receiver removed. **Real teacher/student acceptance remains blocked, not simulated as a pass.** See `IDENTITY_CONTRACT.md` and current `CORE_INTROSPECTION_VALIDATION.md`; previous phase reports are historical.
 
 ## Investigated baseline
 
@@ -22,11 +22,15 @@ Run from this directory: `npm ci`, `npm run check`, then `npm run test:browser`.
 
 No environment variables or `.env` are required for local fixtures. Production construction requires explicit trusted providers and server-only signing keys; there are no default production secrets or permissive Core provider. The plugin uses only self-scoped `schoolcore_context_token`, SDK `getSessionToken`, and fixed **same-origin** adapter routes. It reads no other user's credential and uses no token storage. BBB cookie forwarding is limited to the trusted BBB auth hook; Core reads omit cookies. Moderator role alone is **not** School Core teacher authority.
 
+`server/production-integration.cjs` exposes `createProductionIdentityService` with explicit BBB hook URL, activity allowlist and activity-signing keys/issuer/audience/kid. It uses `server/core-introspection.cjs` for request-scoped live token introspection at the fixed Core endpoint. The service credential is read only on the server from the protected fixed `/etc/bigbluebutton/lgu-activities/classroom_introspection_token`, with file type/owner/mode/size checks. It is not a plugin setting, environment variable, manifest property or browser module. No new service credential was generated. Do not paste either credential into logs or public bug reports.
+
+For an explicitly authorized, non-personal live **service authentication only** check, run `scripts/probe-core-service-auth.cjs --live-service-auth-only` using Node as `bigbluebutton`. It sends intentionally invalid token/fictional bindings, requires `HTTP 200 active:false`, and prints only sanitized PASS/FAIL. It is not teacher/student acceptance and must not be used to mint identity.
+
 ## Future controlled integration — NOT performed
 
 Like Lesson Assistant, assets can eventually be hosted separately on the BBB HTTPS origin under `/plugins/lgu-activities/`. Install immutable release files before switching the root manifest; keep matching bundle/SRI/manifest together. Do not overwrite Lesson Assistant assets. This generated SRI assumes same-origin hosting (the current BBB loader does not set `crossorigin` for cross-origin SRI).
 
-Before activation the Core owner must implement/review `verifyCoreCredential` against actual token issuance and current membership, ensure normal context responses provide meeting binding, mount `server/http-handler.cjs` behind the BBB HTTPS origin with the real BBB hook/Core reader, configure signing/key rotation/rate limits and context storage, and select a server-approved `liveActivityId` through existing per-plugin settings. No migration is assumed. Stop for schema review if existing backend storage cannot support the integration without one.
+Before activation use the implemented real Core introspection composition, confirm normal context meeting binding, mount `server/http-handler.cjs` behind the BBB HTTPS origin, configure existing activity-signing keys/key rotation/rate limits/context storage, and select a server-approved `liveActivityId` through existing per-plugin settings. The Core token's current participant binding is derived from the independently authenticated BBB session after successful introspection, not a new pre-join Core claim. No migration is assumed. Stop for schema review if existing backend storage cannot support the integration without one.
 
 Only then authorize one test meeting via `/create` parameter `pluginManifests=[{"url":"https://<bbb-host>/plugins/lgu-activities/manifest.json"}]`. Preserve other required plugins. Do not change global activation. A fresh meeting captures the manifest. No asset copying, backend mounting, nginx/config change, service restart or meeting activation occurs in this phase.
 

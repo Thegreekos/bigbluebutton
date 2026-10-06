@@ -11,7 +11,7 @@ Target: **BBB participant → School Core identity → LGU activity session → 
 
 Phase 1 deliberately has no backend adapter, network operation, inferred School Core identity, session persistence, scoring state, or fake API. BBB `extId`/`userId` alone must not become proof of identity. The Lesson Assistant and its tokens/context must not be used as an undocumented shared state channel.
 
-Phase 2 now implements `IDENTITY_CONTRACT.md`, a server-only reference adapter, explicit synthetic proof fixtures and a plugin client. The existing documented join userdata/Core context integration is reused independently, not Lesson Assistant memory. Live prepares a context with `lguSessionId: null`; production Core verifier and real-meeting acceptance remain blocked. No LGU audience credential, engine or session start is implemented.
+Phase 2 implements `IDENTITY_CONTRACT.md`, a server-only adapter and plugin client. The follow-up now includes real Core introspection and live service-auth evidence; see `CORE_INTROSPECTION_VALIDATION.md`. Join userdata/Core integration is reused independently, not Lesson Assistant memory. Live prepares a context with `lguSessionId: null`; real teacher/two-student BBB acceptance remains blocked. No LGU audience credential, engine or session start is implemented.
 
 ## Next gate (independent of PR #46)
 

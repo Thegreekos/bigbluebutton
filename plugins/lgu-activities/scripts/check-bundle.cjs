@@ -20,6 +20,7 @@ assert.deepEqual(manifest.settingsSchema, [
   { name: 'liveActivityId', label: 'Server-approved LGU activity ID', required: false, type: 'string', defaultValue: '' },
 ]);
 assert.doesNotMatch(bundle.toString(), /fixture-core-|fixture-bbb-|fixture-ephemeral-key|BEGIN PRIVATE KEY/);
+assert.doesNotMatch(bundle.toString(), /classroom_introspection_token|classroom\/token\/introspect|CORE_SERVICE_AUTH_FAILED/);
 assert.equal(manifest.eventPersistence.isEnabled, false);
 assert.equal(manifest.enabledForBreakoutRooms, false);
 console.log(`Bundle/manifest/SDK/SRI checks passed (${bundle.length} bytes).`);

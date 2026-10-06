@@ -61,10 +61,18 @@ async function createIdentityService(options) {
     let core;
     try {
       bbb = await verifyBbbProof({ sessionToken: proof.sessionToken, cookie: proof.cookie });
-      core = await verifyCoreCredential(proof.coreToken);
     } catch { throw new ContractError('PROOF_INVALID', 401); }
     requireValue(bbb?.online === true && [bbb.meetingId, bbb.externalMeetingId, bbb.participantId, bbb.extId].every(stableId)
       && typeof bbb.moderator === 'boolean', 'BBB_PROOF_INVALID', 401);
+    // Only a validated BBB server response may supply expected Core bindings.
+    // Immutable snapshot: never pass browser body assertions to introspection.
+    bbb = Object.freeze({ ...bbb });
+    try {
+      core = await verifyCoreCredential(proof.coreToken, bbb);
+    } catch (error) {
+      if (error instanceof ContractError) throw error;
+      throw new ContractError('CORE_PROOF_INVALID', 401);
+    }
     requireValue(core?.issuer === coreIssuer && stableId(core.personId)
       && core.membershipActive === true && Number.isSafeInteger(core.expiresAt)
       && core.expiresAt > clock(), 'CORE_PROOF_INVALID', 401);
