@@ -33,7 +33,7 @@ test('active Core subject is bound to server BBB proof; no positive cache and no
   for (const { url, options } of calls) {
     assert.equal(url, CORE_ENDPOINT);
     assert.deepEqual(JSON.parse(options.body), { token: 'fixture-own-core-token', expected: {
-      personId: 'person-A', meetingId: 'external-lesson', role: 'student', kind: 'lesson' } });
+      personId: 'person-A', meetingId: 'external-lesson', kind: 'lesson' } });
     assert.equal(options.headers.Authorization, `Bearer ${reader()}`);
     assert.equal(options.headers.Cookie, undefined);
     assert.equal(options.method, 'POST'); assert.equal(options.redirect, 'error');
@@ -41,14 +41,31 @@ test('active Core subject is bound to server BBB proof; no positive cache and no
   }
 });
 
-test('BBB moderator requires introspected teacher role, not student authority promotion', async () => {
+test('BBB moderator flag is not sent as an expected Core role', async () => {
   const teacher = { ...bbb, extId: 'person-teacher', moderator: true };
   const verify = createCoreCredentialVerifier({ clock: () => now, readCredential: reader,
     fetchImpl: async (_url, options) => {
-      assert.equal(JSON.parse(options.body).expected.role, 'teacher');
+      assert.deepEqual(JSON.parse(options.body).expected, {
+        personId: teacher.extId, meetingId: teacher.externalMeetingId, kind: 'lesson' });
       return Response.json(active(teacher));
     } });
   assert.equal((await verify('fixture-teacher-token', teacher)).role, 'teacher');
+});
+
+test('introspection accepts valid Core teacher/viewer and student/moderator associations independently', async () => {
+  for (const [role, moderator] of [['teacher', false], ['student', true]]) {
+    const verifiedBbb = { ...bbb, moderator };
+    const result = active();
+    result.data.subject.role = role;
+    result.data.session.teacherPersonId = role === 'teacher' ? bbb.extId : 'another-teacher';
+    const verify = createCoreCredentialVerifier({ clock: () => now, readCredential: reader,
+      fetchImpl: async (_url, options) => {
+        assert.deepEqual(JSON.parse(options.body), { token: 'fixture', expected: {
+          personId: bbb.extId, meetingId: bbb.externalMeetingId, kind: 'lesson' } });
+        return Response.json(result);
+      } });
+    assert.equal((await verify('fixture', verifiedBbb)).role, role);
+  }
 });
 
 test('Core created BBB room accepts active bound identity; inactive and ended still deny', async () => {

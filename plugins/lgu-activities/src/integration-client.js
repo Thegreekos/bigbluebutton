@@ -15,11 +15,20 @@ function extractCoreToken(result) {
   return tokens.length === 1 && typeof tokens[0].value === 'string' && tokens[0].value.trim()
     ? tokens[0].value.trim() : null;
 }
+function metadataState(result) {
+  if (!result || result.loading || result.data?.loading) return 'loading';
+  if (result.error || result.data?.error) return 'invalid';
+  const rows = result.data?.data?.user_metadata ?? result.data?.user_metadata;
+  if (!Array.isArray(rows)) return 'invalid';
+  const tokens = rows.filter(row => row?.parameter === 'schoolcore_context_token');
+  if (tokens.length === 0) return 'absent';
+  return tokens.length === 1 && typeof tokens[0].value === 'string' && tokens[0].value.trim() ? 'present' : 'invalid';
+}
 function mapObservedParticipants(classroom, rows, currentUserId) {
-  if (!Array.isArray(rows) || !Array.isArray(classroom?.students)) return [];
+  if (!Array.isArray(rows)) return [];
   const live = rows.filter((p) => p.userId !== currentUserId && p.joined === true
     && p.currentlyInMeeting === true && !p.disconnected && !p.loggedOut && !p.expired && !p.bot);
-  const ids = new Set(classroom.students.map((student) => student.personId));
+  const ids = new Set((classroom?.students ?? []).map((student) => student.personId));
   return live.map((p) => {
     const matched = typeof p.extId === 'string' && ids.has(p.extId)
       && live.filter((other) => other.extId === p.extId).length === 1;
@@ -34,12 +43,12 @@ function createActivityClient({ sessionToken, coreToken, fetchImpl = fetch }) {
   let contextId;
   const controller = new AbortController();
   async function request(route, body) {
-    if (!bbbProof || !coreProof || controller.signal.aborted) throw new Error('PROOF_REQUIRED');
+    if (!bbbProof || controller.signal.aborted) throw new Error('PROOF_REQUIRED');
     const response = await fetchImpl(`/api/lgu-activities/v1/${route}`, {
       method: 'POST', mode: 'same-origin', credentials: 'same-origin', redirect: 'error', cache: 'no-store',
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
       headers: { 'Content-Type': 'application/json', Accept: 'application/json',
-        'X-BBB-Session-Token': bbbProof, Authorization: `Bearer ${coreProof}` },
+        'X-BBB-Session-Token': bbbProof, ...(coreProof ? { Authorization: `Bearer ${coreProof}` } : {}) },
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error('INTEGRATION_DENIED');
@@ -63,4 +72,4 @@ function createActivityClient({ sessionToken, coreToken, fetchImpl = fetch }) {
     dispose() { bbbProof = null; coreProof = null; activityToken = null; contextId = null; controller.abort(); },
   };
 }
-module.exports = { USER_METADATA_QUERY, PRESENCE_SUBSCRIPTION, extractCoreToken, mapObservedParticipants, createActivityClient };
+module.exports = { USER_METADATA_QUERY, PRESENCE_SUBSCRIPTION, extractCoreToken, metadataState, mapObservedParticipants, createActivityClient };

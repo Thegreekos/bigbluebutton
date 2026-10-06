@@ -55,7 +55,7 @@ test('one sidekick, no explicit gallery duplicate, stable rerender and cleanup',
   assert.equal(items.length, 0);
 });
 
-test('Learn/Play remain placeholders; Live disabled without validated Core identity', () => {
+test('Learn/Play remain placeholders; Live disabled without verified BBB organiser identity', () => {
   const pluginApi = unavailableApi();
   let root;
   act(() => { root = create(React.createElement(TeacherPanel, { pluginApi })); });

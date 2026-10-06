@@ -1,6 +1,8 @@
 # Same-origin exact adapter endpoints; never expose configuration or secret files.
 location ~ ^/api/lgu-activities/v1/(self|identity|contexts|identities|verify)$ {
   client_max_body_size 16k;
+  limit_req zone=lgu_identity_requests burst=60 nodelay;
+  limit_req_status 429;
   access_log off;
   proxy_pass http://127.0.0.1:4703;
   proxy_http_version 1.1;

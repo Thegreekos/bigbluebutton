@@ -38,6 +38,7 @@ function createIdentityHttpHandler({ service, origin, allowLoopback = false }) {
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
       catch { throw new ContractError('INVALID_JSON', 400); }
       const match = /^Bearer ([^\s]+)$/.exec(request.headers.authorization || '');
+      if (request.headers.authorization !== undefined && !match) throw new ContractError('CORE_PROOF_INVALID', 401);
       const proof = { coreToken: match?.[1], sessionToken: request.headers['x-bbb-session-token'], cookie: request.headers.cookie };
       reply(200, await service[method](proof, body));
     } catch (error) {

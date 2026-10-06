@@ -44,12 +44,13 @@ async function main() {
     await page.keyboard.press('Enter');
     await page.getByTestId('lgu-activity-learn').waitFor();
     assert.equal(await page.locator('#content [data-testid^="lgu-activity-"]').count(), 3);
-    await page.getByText('Teacher · School Core person ID: 17', { exact: true }).waitFor();
+    await page.getByText('Verified BBB organiser · School Core association', { exact: true }).waitFor();
     const roster = await page.getByTestId('lgu-participant-identities').innerText();
-    assert.match(roster, /w_student_a → School Core student ID 29/);
-    assert.match(roster, /w_student_b → School Core student ID 31/);
-    assert.match(roster, /w_guest · προσωρινός \/ μη επαληθευμένος/);
-    checks.push('Synthetic canonical teacher identified; same-name students map by stable IDs; guest unverified');
+    assert.equal(await page.getByTestId('lgu-participant-identities').locator('li').count(), 3);
+    assert.equal((roster.match(/Participant · Core roster match/g) || []).length, 2);
+    assert.equal((roster.match(/Participant · χωρίς Core roster association/g) || []).length, 1);
+    assert.doesNotMatch(await page.locator('#content').innerText(), /w_teacher|w_student_a|w_student_b|w_guest|\b(?:17|29|31)\b/);
+    checks.push('Verified Core organiser; two Core roster matches and one guest association; person/participant IDs hidden');
     for (const [id, label] of [['learn', 'Μαθαίνω'], ['play', 'Παίζω']]) {
       await page.getByTestId(`lgu-activity-${id}`).click();
       assert.equal(await page.getByTestId(`lgu-activity-${id}`).getAttribute('aria-pressed'), 'true');
@@ -93,16 +94,33 @@ async function main() {
     assert.deepEqual(externalRequests, []);
     assert.deepEqual(errors, []);
     checks.push('No external requests or browser errors');
+    const beforeGuest = adapterRequests.length;
     await page.goto(origin);
     await app.waitFor();
     await app.click();
+    await page.getByTestId('lgu-identity-status').filter({ hasText: 'Verified BBB organiser · Temporary guest' }).waitFor();
     assert.equal(await page.getByTestId('lgu-activity-live').isDisabled(), true);
-    checks.push('Missing Core proof disables Live without an identity request');
+    assert.deepEqual(adapterRequests.slice(beforeGuest).map(r => r.path), ['/api/lgu-activities/v1/identity']);
+    assert.equal(await page.getByTestId('lgu-activity-selection-required').count(), 1);
+    checks.push('Absent Core metadata + valid BBB proof verifies guest organiser; no selected activity keeps Live disabled');
+    await page.goto(`${origin}/?identity=guest`);
+    await app.waitFor();
+    await app.click();
+    await page.getByTestId('lgu-identity-status').filter({ hasText: 'Verified BBB organiser · Temporary guest' }).waitFor();
+    assert.equal(await page.getByTestId('lgu-activity-live').isDisabled(), false);
+    const guestRoster = await page.getByTestId('lgu-participant-identities').innerText();
+    assert.equal((guestRoster.match(/χωρίς Core roster association/g) || []).length, 3);
+    assert.doesNotMatch(guestRoster, /Core roster match|w_student|\b(?:17|29|31)\b/);
+    await page.getByTestId('lgu-activity-live').click();
+    await page.getByRole('status').filter({ hasText: 'Activity context έτοιμο:' }).waitFor();
+    checks.push('Guest moderator prepares approved activity without Core token, roster association or persistent history');
     assert.ok(adapterRequests.length >= 2);
     assert.ok(adapterRequests.every((r) => r.path.endsWith('/identity') ? Object.keys(r.body).length === 0
       : r.path.endsWith('/contexts') && JSON.stringify(r.body) === '{"activityId":"fixture-live-one"}'));
     assert.doesNotMatch(await page.locator('body').innerText(), /fixture-core-|fixture-bbb-|eyJ[a-zA-Z0-9_-]+\./);
     assert.deepEqual(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length })), { local: 0, session: 0 });
+    assert.deepEqual(externalRequests, []);
+    assert.deepEqual(errors, []);
     checks.push('Plugin sends no identity declarations; proofs/activity token absent from DOM/storage');
     const report = { scope: 'Local real-SDK + signed adapter, SYNTHETIC Core/BBB proofs; NOT a live BBB meeting', checks,
       browser: await browser.version(), externalRequests, errors, adapterRequestCount: adapterRequests.length };

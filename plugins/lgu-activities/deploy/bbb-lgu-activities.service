@@ -1,5 +1,5 @@
 [Unit]
-Description=BigBlueButton LGU Activities scoped identity adapter
+Description=BigBlueButton LGU Activities verified participant adapter
 After=network-online.target bbb-web.service
 Wants=network-online.target
 

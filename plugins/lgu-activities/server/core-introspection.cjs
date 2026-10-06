@@ -51,8 +51,9 @@ function createCoreCredentialVerifier({ fetchImpl = fetch, readCredential = read
     if (typeof token !== 'string' || !token.length || token.length > 8192
       || !bbb || bbb.online !== true || ![bbb.extId, bbb.externalMeetingId, bbb.meetingId, bbb.participantId].every(id)
       || typeof bbb.moderator !== 'boolean') throw new ContractError('BBB_PROOF_INVALID', 401);
-    const expected = { personId: bbb.extId, meetingId: bbb.externalMeetingId,
-      role: bbb.moderator ? 'teacher' : 'student', kind: 'lesson' };
+    // Core role is association, not BBB organiser authority. Core validates its
+    // credential role; organiser is independently derived from BBB moderator.
+    const expected = { personId: bbb.extId, meetingId: bbb.externalMeetingId, kind: 'lesson' };
     let credential;
     try { credential = readCredential(); }
     catch { throw new ContractError('CORE_SERVICE_CREDENTIAL_INVALID', 503); }
@@ -84,7 +85,7 @@ function createCoreCredentialVerifier({ fetchImpl = fetch, readCredential = read
     const subject = data.subject;
     const session = data.session;
     if (!subject || subject.personId !== expected.personId || subject.meetingId !== expected.meetingId
-      || subject.role !== expected.role || subject.kind !== 'lesson'
+      || !['teacher', 'student'].includes(subject.role) || subject.kind !== 'lesson'
       || (Array.isArray(data.mismatches) && data.mismatches.length)) {
       throw new ContractError('CORE_IDENTITY_BINDING_MISMATCH', 403);
     }

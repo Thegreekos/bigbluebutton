@@ -1,4 +1,6 @@
-# Activity identity v1 — Phase 2
+# Historical activity identity v1 — Phase 2
+
+**Superseded by [`IDENTITY_V2.md`](IDENTITY_V2.md), release0.3.0.** The v1 text below records previous acceptance gates only; guest denial/Core-teacher requirements and scoped service instructions below are not current production behavior. Current report: `PRODUCTION_MODES_ACCEPTANCE.md`.
 
 Status: implemented production Core introspection provider and **running one-meeting-scoped adapter**, with real Teacher/Students A+B, cross-student rejection and reload/reconnect evidence. Core contract revision `c8e1789` was user-supplied. No LGU changes/migrations/PR #46 dependency. Current evidence: `SCOPED_ACCEPTANCE.md`. Official LGU plugin loader/Live UI and true unknown-participant gates remain blocked; READY is NO.
 

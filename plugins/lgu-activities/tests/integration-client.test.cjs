@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { extractCoreToken, mapObservedParticipants, createActivityClient } = require('../src/integration-client');
+const { extractCoreToken, metadataState, mapObservedParticipants, createActivityClient } = require('../src/integration-client');
 
 test('self metadata token extraction rejects duplicates, loading, errors and malformed values', () => {
   const row = { parameter: 'schoolcore_context_token', value: 'fixture-core-self' };
@@ -59,4 +59,39 @@ test('denied or malformed context response never becomes a prepared activity', a
     await assert.rejects(client.prepare('activity-1'));
     client.dispose();
   }
+});
+
+test('metadataState distinguishes valid absence from invalid token rows and unavailable metadata', () => {
+  assert.equal(metadataState({ loading: false, data: { user_metadata: [] } }), 'absent');
+  assert.equal(metadataState({ loading: false, data: { data: { user_metadata: [{ parameter: 'unrelated', value: 'x' }] } } }), 'absent');
+  const token = { parameter: 'schoolcore_context_token', value: 'fixture-core' };
+  assert.equal(metadataState({ data: { user_metadata: [token] } }), 'present');
+  for (const value of ['', ' ', null, {}, 123]) {
+    assert.equal(metadataState({ data: { user_metadata: [{ ...token, value }] } }), 'invalid');
+  }
+  assert.equal(metadataState({ data: { user_metadata: [token, token] } }), 'invalid');
+  assert.equal(metadataState({ data: {} }), 'invalid');
+  assert.equal(metadataState({ error: {} }), 'invalid');
+  assert.equal(metadataState(undefined), 'loading');
+  assert.equal(metadataState({ data: { loading: true, user_metadata: [] } }), 'loading');
+});
+
+test('guest client sends only BBB proof headers and minimal identity/context bodies', async () => {
+  const requests = [];
+  const client = createActivityClient({ sessionToken: 'fixture-bbb-guest', fetchImpl: async (url, options) => {
+    requests.push({ url, options });
+    return Response.json(url.endsWith('/contexts') ? { identityToken: 'private-guest-token',
+      context: { id: 'guest-context', activityId: 'approved-activity', lguSessionId: null },
+      identity: { mode: 'guest', organiser: true }, expiresAt: Math.floor(Date.now() / 1000) + 120 } : {});
+  } });
+  await client.identify();
+  const prepared = await client.prepare('approved-activity');
+  assert.equal(prepared.identityToken, undefined);
+  assert.deepEqual(requests.map(r => JSON.parse(r.options.body)), [{}, { activityId: 'approved-activity' }]);
+  for (const { options } of requests) {
+    assert.equal(Object.hasOwn(options.headers, 'Authorization'), false);
+    assert.equal(options.headers['X-BBB-Session-Token'], 'fixture-bbb-guest');
+    assert.equal(options.credentials, 'same-origin');
+  }
+  client.dispose();
 });

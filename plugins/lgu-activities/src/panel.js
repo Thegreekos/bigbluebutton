@@ -36,21 +36,22 @@ function TeacherPanel({ pluginApi }) {
   if (!isTeacher(user)) {
     return h('section', { className: 'lgu-activities', lang: 'el', 'aria-live': 'polite' },
       h('p', null, user?.loading !== false && !user?.error
-        ? 'Έλεγχος ρόλου…' : 'Το panel είναι διαθέσιμο μόνο στον εκπαιδευτικό.'));
+        ? 'Έλεγχος ρόλου…' : 'Το organiser panel είναι διαθέσιμο μόνο σε BBB moderator.'));
   }
   const activity = ACTIVITIES.find((item) => item.id === selected);
   return h('section', { className: 'lgu-activities', lang: 'el', 'aria-label': 'LGU Activities' },
     h('style', null, STYLES),
-    h('span', { className: 'lgu-activities__badge' }, 'PHASE 2 · IDENTITY CONTRACT'),
+    h('span', { className: 'lgu-activities__badge' }, 'CORE & GUEST · INTEGRATION READY'),
     h('h2', null, 'LGU Activities'),
     h('p', null, 'Επίλεξε πώς θέλεις να δουλέψεις με την τάξη σου.'),
     h('p', { 'data-testid': 'lgu-identity-status', 'aria-live': 'polite' }, integration.ready
-      ? `Teacher · School Core person ID: ${integration.identity.personId}`
-      : 'Η School Core identity δεν έχει επαληθευτεί. Το Live παραμένει κλειδωμένο.'),
+      ? integration.identity.mode === 'core' ? 'Verified BBB organiser · School Core association'
+        : 'Verified BBB organiser · Temporary guest · Χωρίς μόνιμο μαθητικό ιστορικό'
+      : 'Έλεγχος BBB organiser identity. Το Live παραμένει κλειδωμένο.'),
     integration.ready && h('ul', { 'data-testid': 'lgu-participant-identities' },
       ...integration.participants.map((p) => h('li', { key: p.participantId }, p.personId
-        ? `BBB ${p.participantId} → School Core student ID ${p.personId} · roster match, χωρίς activity credential`
-        : `BBB ${p.participantId} · προσωρινός / μη επαληθευμένος participant`))),
+        ? 'Participant · Core roster match (activity identity ελέγχεται server-side)'
+        : 'Participant · χωρίς Core roster association (guest identity ελέγχεται server-side)'))),
     h('div', { className: 'lgu-activities__choices', 'aria-label': 'Δραστηριότητες' },
       ...ACTIVITIES.map((item) => h('button', {
         key: item.id, type: 'button', className: 'lgu-activities__choice',
@@ -70,6 +71,8 @@ function TeacherPanel({ pluginApi }) {
         : integration.status === 'preparing' ? 'Επαλήθευση και προετοιμασία activity context…'
           : activity ? `${activity.label}: θα συνδεθεί με το LGU σε επόμενη φάση. Δεν ξεκίνησε δραστηριότητα.`
             : 'Δεν υπάρχει ακόμη σύνδεση με το LGU backend.'),
+    integration.ready && !integration.canPrepare && h('p', { 'data-testid': 'lgu-activity-selection-required' },
+      'Επιλογή εγκεκριμένου activity από organiser απαιτείται πριν από Play/Live. Δεν υπάρχει ακόμη game engine.'),
     h('button', { type: 'button', onClick: integration.retry, 'data-testid': 'lgu-identity-retry' }, 'Επανέλεγχος identity'));
 }
 

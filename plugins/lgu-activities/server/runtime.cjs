@@ -3,17 +3,17 @@ const http = require('node:http');
 const { createPrivateKey, createPublicKey } = require('node:crypto');
 const { createProductionIdentityService } = require('./production-integration.cjs');
 const { createIdentityHttpHandler } = require('./http-handler.cjs');
-const { readServiceCredential } = require('./core-introspection.cjs');
 
 const CONFIG = '/etc/bigbluebutton/lgu-activities/adapter.json';
 const SIGNING_KEY = '/etc/bigbluebutton/lgu-activities/activity-signing-key.pem';
 
 async function start() {
   const config = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
-  if (!Array.isArray(config.allowedMeetingIds) || !Array.isArray(config.allowedActivityIds)
+  if (config.meetingScope !== 'all-verified-bbb' || !Array.isArray(config.allowedActivityIds)
+    || config.allowedActivityIds.some(id => typeof id !== 'string' || !id || id.length > 256)
     || config.origin !== 'https://meet.thegreekos.com') throw new Error('Invalid config');
-  // Startup permission/secret validation; no credential output or positive cache.
-  readServiceCredential();
+  // Core credential is checked only on a Core request; its outage must not
+  // prevent independently authenticated guest meetings from functioning.
   const fd = fs.openSync(SIGNING_KEY, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   let privateKey;
   try {
@@ -24,7 +24,6 @@ async function start() {
   } finally { fs.closeSync(fd); }
   const service = await createProductionIdentityService({
     bbbHookUrl: 'http://127.0.0.1:8090/bigbluebutton/connection/checkGraphqlAuthorization',
-    allowedMeetingIds: config.allowedMeetingIds,
     resolveActivity: async (id) => config.allowedActivityIds.includes(id),
     privateKey, publicKey: createPublicKey(privateKey), issuer: config.origin,
     audience: 'lgu-activities-adapter-v1', kid: 'bbb4-activity-identity-v1',
@@ -33,7 +32,7 @@ async function start() {
   const server = http.createServer((request, response) => {
     if (request.url === '/healthz' && request.method === 'GET') {
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      response.end(JSON.stringify({ status: 'ready', scoped: true })); return;
+      response.end(JSON.stringify({ status: 'ready', meetingScope: 'all-verified-bbb', modes: ['core', 'guest'] })); return;
     }
     handler(request, response).catch(() => {
       if (!response.headersSent) response.writeHead(503);
@@ -43,7 +42,7 @@ async function start() {
   server.requestTimeout = 10000; server.headersTimeout = 10000; server.keepAliveTimeout = 5000;
   server.maxHeadersCount = 40;
   server.on('error', () => { console.error('LGU adapter runtime FAIL'); process.exitCode = 1; });
-  server.listen(4703, '127.0.0.1', () => console.log('LGU adapter runtime READY (loopback, meeting-scoped)'));
+  server.listen(4703, '127.0.0.1', () => console.log('LGU adapter runtime READY (loopback, verified BBB meetings)'));
   for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.close());
 }
 if (require.main === module) start().catch(() => { console.error('LGU adapter startup FAIL'); process.exitCode = 1; });

@@ -3,6 +3,7 @@
 (() => {
   const CURRENT_USER = 'Hooks::UseCurrentUser';
   const fixtureIdentity = new URL(location.href).searchParams.get('identity') === 'fixture';
+  const guestActivity = new URL(location.href).searchParams.get('identity') === 'guest';
   const roleResponse = (role) => role === 'LOADING' ? { loading: true }
     : role === 'ERROR' ? { loading: false, error: { message: 'Synthetic role error' } }
       : { loading: false, data: { userId: 'w_teacher', extId: '17', name: 'Synthetic teacher', role } };
@@ -30,7 +31,7 @@
       data = { data: { user_metadata: fixtureIdentity
         ? [{ parameter: 'schoolcore_context_token', value: 'fixture-core-teacher' }] : [] } };
     } else if (hookArguments?.query?.includes('pluginSettingsSubscription')) {
-      data = { meeting_clientPluginSettings: [{ settings: { liveActivityId: fixtureIdentity ? 'fixture-live-one' : '' } }] };
+      data = { meeting_clientPluginSettings: [{ settings: { liveActivityId: fixtureIdentity || guestActivity ? 'fixture-live-one' : '' } }] };
     } else if (hookArguments?.query?.includes('LGUActivitiesPresence')) {
       const active = { joined: true, currentlyInMeeting: true, disconnected: false, loggedOut: false, expired: false, bot: false };
       data = { data: { user: [
@@ -53,7 +54,7 @@
   window.bbb_plugins = {
     'plugin-root': {
       pluginName: 'LGUActivities',
-      getSessionToken() { return fixtureIdentity ? 'fixture-bbb-teacher' : undefined; },
+      getSessionToken() { return 'fixture-bbb-teacher'; },
       setGenericContentItems(items) {
         queueMicrotask(() => {
           if (activeId && !items.some((item) => item.id === activeId)) close();

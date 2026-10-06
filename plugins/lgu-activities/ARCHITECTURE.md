@@ -1,6 +1,6 @@
 # Authority boundaries and first Live vertical slice
 
-Target: **BBB participant → School Core identity → LGU activity session → LGU backend**.
+Target: **verified BBB participant → optional Core association OR temporary guest → LGU activity session → LGU backend**. Current contract: `IDENTITY_V2.md`; current real evidence: `PRODUCTION_MODES_ACCEPTANCE.md`. Organiser authority is always server-verified BBB moderator; Core teacher/student role is enrichment, not a mandatory gateway. Official new-meeting Apps load and real Core/guest/organiser integration have passed. Earlier phase notes below are historical.
 
 | Layer | Authority |
 | --- | --- |
@@ -11,7 +11,7 @@ Target: **BBB participant → School Core identity → LGU activity session → 
 
 Phase 1 deliberately has no backend adapter, network operation, inferred School Core identity, session persistence, scoring state, or fake API. BBB `extId`/`userId` alone must not become proof of identity. The Lesson Assistant and its tokens/context must not be used as an undocumented shared state channel.
 
-Phase 2 implements `IDENTITY_CONTRACT.md`, a server-only adapter and plugin client. The follow-up now includes real Core introspection and live service-auth evidence; see `CORE_INTROSPECTION_VALIDATION.md`. Join userdata/Core integration is reused independently, not Lesson Assistant memory. Live prepares a context with `lguSessionId: null`; real teacher/two-student BBB acceptance remains blocked. No LGU audience credential, engine or session start is implemented.
+Current service is enabled for reboot and all authenticated BBB meetings, with official plugin0.3.0. Valid Core token is introspected; absent credential creates guest without Core/history. Present invalid credential denies, never guest fallback. Preparation still has `lguSessionId:null`; no LGU audience token, account provisioning, engine or session start is implemented. Empty production activity allowlist keeps game actions disabled until approved organiser activity selection is wired.
 
 ## Next gate (independent of PR #46)
 
@@ -22,4 +22,4 @@ Agree and fixture-test a **versioned server-validated Live adapter contract** wi
 3. One canonical Core student joins that session, receives **one LGU-sourced question**, submits **one answer**, and sees the **LGU-returned result**. Teacher sees the canonical session/result state. No local answer evaluation or duplicated scoring/mastery.
 4. Test missing/expired context, viewer/unrelated teacher, wrong meeting/class, duplicate start/answer, reconnect/resume and backend unavailable. Adapter validates membership and scope on every operation.
 
-The adapter interface, rejection fixtures and mocked browser flow are implemented. First unblock the actual Core credential verifier/binding and review the contract with its owner; then separately authorize real teacher/student meeting acceptance. `LGU_HANDOFF.md` defines subsequent token exchange/session binding/idempotent start/self join through LGU's existing engine. No claimed existing LGU route or file names were invented. No LGU source, migration or deployment was touched in Phase 2. Authentication changes require private security collaboration per `CLAUDE.md`; do not open a public security PR.
+Participant integration now passes real official loader/Core/guest/organiser acceptance. Proceed only in a new authorised task to `LGU_HANDOFF.md`: engine exchange/session binding/idempotent organiser start and Core-or-guest join. No claimed existing LGU route/file names were invented and no LGU source/migration was touched. Authentication changes require private security collaboration per `CLAUDE.md`; do not open a public security PR.

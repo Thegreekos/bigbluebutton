@@ -1,6 +1,23 @@
-# LGU Activities — Phase 2 identity preparation
+# LGU Activities — Production participant integration (0.3.0)
 
-Independent plugin package inside the BBB4 workspace. No BBB core changes, LGU repository changes or database migrations. Scoped adapter service/routes/assets are now installed for acceptance only. Independent of LGU PR #46; no PR ref or unreleased LGU dependency.
+**Current:** official loader + real Core/guest acceptance passed. `bbb-lgu-activities` is running and enabled for boot for all verified BBB meetings, not one acceptance lesson. Core association is optional; verified BBB moderator controls organiser authority. Read [`IDENTITY_V2.md`](IDENTITY_V2.md) and [`PRODUCTION_MODES_ACCEPTANCE.md`](PRODUCTION_MODES_ACCEPTANCE.md). The remainder of this README documents previous 0.2.0 operations where marked; v2 is authoritative.
+
+## Current production operation
+
+- Runtime: `/usr/local/bigbluebutton/lgu-activities`, root-managed; service user `bigbluebutton`, loopback `127.0.0.1:4703`, enabled systemd unit, no privileges/capabilities, read-only system/home isolation.
+- Host config `/etc/bigbluebutton/lgu-activities/adapter.json`: `origin: https://meet.thegreekos.com`, `meetingScope: all-verified-bbb`, `allowedActivityIds: []` until an approved engine activity selection is wired. No lesson IDs or browser identity assertions. Health reports modes core/guest.
+- Core secret fixed file0600, parent0700. Guest calls do not read it or call Core. Existing signing key reused; no new credential or identity issuer.
+- Deploy templates: `deploy/bbb-lgu-activities.service`, `deploy/lgu-activities.nginx`, HTTP-context `deploy/lgu-activities-rate-limit.conf`. Install both nginx snippets together, validate nginx before reload. Only exact routes proxied, no request logs/cache, IP rate limit30/s burst60; no static exposure of `/etc`.
+- Built official release is `dist/releases/0.3.0/LGUActivities.js` + generated manifest/SRI; hosted manifest at `/plugins/lgu-activities/manifest.json`. Core now supplies both LGU and Lesson Assistant manifests on new BBB4 `/create` (already done by Core owner; no Core edit here). No script injection, database mutation or BBB core changes.
+- Build/check: `npm ci`, `npm run check`, `npm run test:browser`. Local guest organiser demo: `npm start -- --identity-fixtures`, `/?identity=guest` (synthetic demo, never production evidence).
+- Explicit optional actual guest check: `node scripts/verify-live-guest.cjs --live-guest-check --meeting <approved-existing-external-meeting>`; `--organiser-check` additionally creates a real BBB-only moderator for panel acceptance. This administrative tool uses existing BBB server API configuration in memory, no Core userdata/student accounts, no game, no credential/URL logging; it closes its browser session. Use only in an authorized meeting, not automatic tests.
+- Rollback/stop: disable/stop only `bbb-lgu-activities`, restore the matched previous server/assets/config if needed; remove only its nginx route and rate-limit files together, test/reload nginx. Never delete/print shared Core credential or signing key. Service restart intentionally expires transient prepared contexts; nothing is persisted as student history or a game.
+
+Core participants receive own authorized role/placement/context when available and stable Core association. Guests receive temporary meeting/participant identity, null Core IDs/context and history disabled. Moderator can open the organiser panel with or without Core; activity selection is required before an engine command. Learn/Play/Live remain integration shell; **no engine/game is implemented**. READY refers to the boundary for the next LGU-engine implementation only.
+
+## Historical 0.2.0 notes (superseded where conflicting)
+
+Independent plugin package inside the BBB4 workspace. No BBB core changes, LGU repository changes or database migrations. Independent of LGU PR #46; no PR ref or unreleased LGU dependency.
 
 Phase 2 continues from `f21c4e1ab0` on `feat/lgu-activities-plugin`. Current evidence is `SCOPED_ACCEPTANCE.md`: **real Teacher / Student A / Student B, different canonical identities, cross-student misuse and reload/reconnect passed** through the running scoped adapter. Full READY remains NO: true non-Core guest and officially loaded LGU Live UI checks remain blocked. Earlier phase reports are historical; fixtures do not substitute for those gates.
 

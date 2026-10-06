@@ -55,18 +55,22 @@ async function createIdentityService(options) {
 
   async function authenticate(proof) {
     requireValue(typeof proof?.sessionToken === 'string' && proof.sessionToken.length > 0
-      && proof.sessionToken.length <= 8192 && typeof proof.coreToken === 'string'
-      && proof.coreToken.length > 0 && proof.coreToken.length <= 8192, 'PROOF_REQUIRED', 401);
+      && proof.sessionToken.length <= 8192, 'PROOF_REQUIRED', 401);
     let bbb;
     let core;
     try {
       bbb = await verifyBbbProof({ sessionToken: proof.sessionToken, cookie: proof.cookie });
     } catch { throw new ContractError('PROOF_INVALID', 401); }
-    requireValue(bbb?.online === true && [bbb.meetingId, bbb.externalMeetingId, bbb.participantId, bbb.extId].every(stableId)
+    requireValue(bbb?.online === true && [bbb.meetingId, bbb.externalMeetingId, bbb.participantId].every(stableId)
       && typeof bbb.moderator === 'boolean', 'BBB_PROOF_INVALID', 401);
     // Only a validated BBB server response may supply expected Core bindings.
     // Immutable snapshot: never pass browser body assertions to introspection.
     bbb = Object.freeze({ ...bbb });
+    const hasCredential = proof.coreToken !== undefined && proof.coreToken !== null;
+    if (!hasCredential) return { bbb, core: null, mode: 'guest', organiser: bbb.moderator,
+      principalId: principal(['guest', issuer, bbb.meetingId, bbb.participantId]) };
+    requireValue(typeof proof.coreToken === 'string' && proof.coreToken.length > 0
+      && proof.coreToken.length <= 8192 && stableId(bbb.extId), 'CORE_PROOF_INVALID', 401);
     try {
       core = await verifyCoreCredential(proof.coreToken, bbb);
     } catch (error) {
@@ -78,25 +82,50 @@ async function createIdentityService(options) {
       && core.expiresAt > clock(), 'CORE_PROOF_INVALID', 401);
     requireValue(core.personId === bbb.extId && core.meetingId === bbb.externalMeetingId
       && core.participantId === bbb.participantId, 'IDENTITY_BINDING_MISMATCH');
-    requireValue((core.role === 'teacher' && bbb.moderator === true)
-      || (core.role === 'student' && bbb.moderator === false), 'ROLE_MISMATCH');
-    return { bbb, core };
+    requireValue(['teacher', 'student'].includes(core.role), 'ROLE_MISMATCH');
+    return { bbb, core, mode: 'core', organiser: bbb.moderator,
+      principalId: principal(['core', coreIssuer, core.personId]) };
+  }
+  function principal(parts) { return `lgu-identity:${createHash('sha256').update(JSON.stringify(parts)).digest('hex')}`; }
+  function selfIdentity(auth) {
+    return { mode: auth.mode, principalId: auth.principalId,
+      personId: auth.core?.personId ?? null, corePersonId: auth.core?.personId ?? null,
+      coreIssuer: auth.core ? coreIssuer : null, role: auth.core?.role ?? 'guest',
+      organiser: auth.organiser, persistentHistoryEligible: auth.mode === 'core',
+      meetingId: auth.bbb.meetingId, participantId: auth.bbb.participantId };
+  }
+  async function enrichment(auth, coreToken) {
+    if (!auth.core) return { classroom: null, learningContext: null, enrichmentStatus: 'not-applicable' };
+    try {
+      const raw = await readClassroom(coreToken);
+      const classroom = normalizeCoreContextForEnrichment(raw, auth);
+      const own = auth.core.role === 'student'
+        ? raw.data.students?.find(s => coreId(s.studentId) === auth.core.personId) : raw.data.context;
+      const value = v => typeof v === 'string' ? v : typeof v?.value === 'string' ? v.value : null;
+      return { classroom, learningContext: { level: value(own?.currentLevel ?? own?.level),
+        unit: value(own?.currentUnit ?? own?.unit), book: value(own?.book) }, enrichmentStatus: 'available' };
+    } catch { return { classroom: null, learningContext: null, enrichmentStatus: 'unavailable' }; }
+  }
+  function normalizeCoreContextForEnrichment(raw, auth) {
+    const classroom = normalizeClassroom(raw);
+    requireValue(classroom.meetingId === auth.bbb.externalMeetingId, 'CLASSROOM_BINDING_MISMATCH');
+    if (auth.core.role === 'teacher') {
+      requireValue(classroom.teacher.personId === auth.core.personId, 'CLASSROOM_BINDING_MISMATCH');
+      return classroom;
+    }
+    requireValue(classroom.students.some(s => s.personId === auth.core.personId), 'CONTEXT_MEMBERSHIP_DENIED');
+    return null; // Never expose roster to a student.
   }
   async function teacherClassroom(auth, coreToken) {
-    requireValue(auth.core.role === 'teacher', 'TEACHER_REQUIRED');
-    let response;
-    try { response = await readClassroom(coreToken); }
-    catch { throw new ContractError('CORE_UNAVAILABLE', 503); }
-    const classroom = normalizeClassroom(response);
-    requireValue(classroom.meetingId === auth.bbb.externalMeetingId
-      && classroom.teacher.personId === auth.core.personId, 'CLASSROOM_BINDING_MISMATCH');
-    return classroom;
+    requireValue(auth.organiser === true, 'TEACHER_REQUIRED');
+    return enrichment(auth, coreToken);
   }
   function publicContext(context, auth) {
     return { id: context.id, activityId: context.activityId, lguSessionId: null,
       meetingId: context.meetingId, externalMeetingId: context.externalMeetingId,
       expiresAt: context.expiresAt,
-      ...(auth.core.role === 'teacher' ? structuredClone({ teacher: context.classroom.teacher, students: context.classroom.students }) : {}) };
+      organiserSelected: true,
+      ...(auth.organiser && context.classroom ? structuredClone({ teacher: context.classroom.teacher, students: context.classroom.students }) : {}) };
   }
   function authorizedContext(auth, id) {
     clean();
@@ -104,20 +133,22 @@ async function createIdentityService(options) {
     requireValue(context, 'CONTEXT_NOT_FOUND', 404);
     requireValue(context.meetingId === auth.bbb.meetingId
       && context.externalMeetingId === auth.bbb.externalMeetingId, 'CONTEXT_MEETING_MISMATCH');
-    requireValue(auth.core.role === 'teacher'
-      ? context.classroom.teacher.personId === auth.core.personId
-      : context.classroom.students.some((student) => student.personId === auth.core.personId), 'CONTEXT_MEMBERSHIP_DENIED');
+    // Authenticated online meeting participants may join the organiser's activity.
+    // Core enrollment was verified by introspection; guests never inherit its IDs.
+    if (auth.organiser) requireValue(context.organiserId === auth.principalId, 'CONTEXT_MEMBERSHIP_DENIED');
     return context;
   }
   function activitySubject(auth, context) {
-    return `activity-person:${createHash('sha256').update(JSON.stringify([coreIssuer, context.id, auth.core.personId])).digest('hex')}`;
+    return `activity-person:${createHash('sha256').update(JSON.stringify([context.id, auth.principalId])).digest('hex')}`;
   }
   async function issue(auth, context) {
     const now = clock();
-    const exp = Math.min(now + 120, auth.core.expiresAt, context.expiresAt);
+    const exp = Math.min(now + 120, auth.core?.expiresAt ?? now + 120, context.expiresAt);
     requireValue(exp > now, 'IDENTITY_EXPIRED', 401);
-    const identity = { v: 1, coreIssuer, corePersonId: auth.core.personId, role: auth.core.role,
-      scope: auth.core.role === 'teacher' ? 'context:prepare' : 'activity:participate',
+    const identity = { v: 2, mode: auth.mode, principalId: auth.principalId, organiser: auth.organiser,
+      persistentHistoryEligible: auth.mode === 'core', coreIssuer: auth.core ? coreIssuer : null,
+      corePersonId: auth.core?.personId ?? null, role: auth.core?.role ?? 'guest',
+      scope: auth.organiser ? 'context:prepare' : 'activity:participate',
       bbbMeetingId: auth.bbb.meetingId, bbbExternalMeetingId: auth.bbb.externalMeetingId,
       bbbParticipantId: auth.bbb.participantId, activityId: context.activityId,
       contextId: context.id, lguSessionId: null };
@@ -133,34 +164,34 @@ async function createIdentityService(options) {
     async identifySelf(proof, body) {
       exactBody(body, []);
       const auth = await authenticate(proof);
-      return { identity: { personId: auth.core.personId, role: auth.core.role,
-        meetingId: auth.bbb.meetingId, participantId: auth.bbb.participantId },
-      expiresAt: Math.min(clock() + 120, auth.core.expiresAt) };
+      const extra = await enrichment(auth, proof.coreToken);
+      return { identity: selfIdentity(auth),
+        learningContext: extra.learningContext, enrichmentStatus: extra.enrichmentStatus,
+        expiresAt: Math.min(clock() + 120, auth.core?.expiresAt ?? clock() + 120) };
     },
     async identify(proof, body) {
       exactBody(body, []);
       const auth = await authenticate(proof);
-      const classroom = await teacherClassroom(auth, proof.coreToken);
-      return { identity: { personId: auth.core.personId, role: auth.core.role,
-        meetingId: auth.bbb.meetingId, participantId: auth.bbb.participantId }, classroom,
-      expiresAt: Math.min(clock() + 120, auth.core.expiresAt) };
+      const extra = await teacherClassroom(auth, proof.coreToken);
+      return { identity: selfIdentity(auth), ...extra,
+      expiresAt: Math.min(clock() + 120, auth.core?.expiresAt ?? clock() + 120) };
     },
     async createContext(proof, body) {
       exactBody(body, ['activityId']);
       const auth = await authenticate(proof);
-      const classroom = await teacherClassroom(auth, proof.coreToken);
+      const extra = await teacherClassroom(auth, proof.coreToken);
       requireValue(await resolveActivity(body.activityId) === true, 'ACTIVITY_NOT_ALLOWED');
       clean();
-      const key = JSON.stringify([auth.bbb.meetingId, auth.core.personId, body.activityId]);
+      const key = JSON.stringify([auth.bbb.meetingId, auth.principalId, body.activityId]);
       let context = contexts.get(contextKeys.get(key));
       if (context) {
         // Never extend lifetime; refresh authoritative roster on repeated preparation.
-        context.classroom = classroom;
+        context.classroom = extra.classroom;
       } else {
         requireValue(contexts.size < maxContexts, 'CONTEXT_CAPACITY', 503);
         context = { id: randomUUID(), key, meetingId: auth.bbb.meetingId,
-          externalMeetingId: auth.bbb.externalMeetingId, activityId: body.activityId, classroom,
-          expiresAt: Math.min(clock() + 300, auth.core.expiresAt) };
+          externalMeetingId: auth.bbb.externalMeetingId, activityId: body.activityId, classroom: extra.classroom,
+          organiserId: auth.principalId, expiresAt: Math.min(clock() + 300, auth.core?.expiresAt ?? clock() + 300) };
         contexts.set(context.id, context); contextKeys.set(key, context.id);
       }
       return issue(auth, context);
@@ -185,17 +216,20 @@ async function createIdentityService(options) {
         });
       } catch { throw new ContractError('ACTIVITY_TOKEN_INVALID', 401); }
       const p = verified.payload;
-      requireValue(verified.protectedHeader.kid === kid && p.v === 1 && p.aud === audience
+      requireValue(verified.protectedHeader.kid === kid && p.v === 2 && p.aud === audience
         && Number.isSafeInteger(p.iat) && Number.isSafeInteger(p.exp) && p.iat <= clock()
-        && Number.isSafeInteger(p.nbf) && p.nbf <= clock() && p.coreIssuer === coreIssuer
-        && p.exp - p.iat <= 120 && p.exp <= auth.core.expiresAt && p.exp <= context.expiresAt
-        && p.sub === activitySubject(auth, context) && p.corePersonId === auth.core.personId
-        && p.role === auth.core.role && p.bbbMeetingId === auth.bbb.meetingId
+        && Number.isSafeInteger(p.nbf) && p.nbf <= clock() && p.coreIssuer === (auth.core ? coreIssuer : null)
+        && p.exp - p.iat <= 120 && p.exp <= (auth.core?.expiresAt ?? clock() + 120) && p.exp <= context.expiresAt
+        && p.sub === activitySubject(auth, context) && p.corePersonId === (auth.core?.personId ?? null)
+        && p.mode === auth.mode && p.principalId === auth.principalId && p.organiser === auth.organiser
+        && p.persistentHistoryEligible === (auth.mode === 'core')
+        && p.role === (auth.core?.role ?? 'guest') && p.bbbMeetingId === auth.bbb.meetingId
         && p.bbbExternalMeetingId === auth.bbb.externalMeetingId && p.bbbParticipantId === auth.bbb.participantId
         && p.activityId === context.activityId && p.contextId === context.id && p.lguSessionId === null
-        && p.scope === (auth.core.role === 'teacher' ? 'context:prepare' : 'activity:participate'), 'ACTIVITY_BINDING_MISMATCH');
+        && p.scope === (auth.organiser ? 'context:prepare' : 'activity:participate'), 'ACTIVITY_BINDING_MISMATCH');
       return { identity: { activityParticipantId: p.sub, corePersonId: p.corePersonId,
-        coreIssuer: p.coreIssuer, role: p.role, contextId: p.contextId,
+        coreIssuer: p.coreIssuer, mode: p.mode, organiser: p.organiser, principalId: p.principalId,
+        persistentHistoryEligible: p.persistentHistoryEligible, role: p.role, contextId: p.contextId,
         activityId: p.activityId, participantId: p.bbbParticipantId }, expiresAt: p.exp };
     },
   };
