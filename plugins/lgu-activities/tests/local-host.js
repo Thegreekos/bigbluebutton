@@ -2,13 +2,16 @@
 // Plugin runs unchanged, with the REAL SDK and React host global.
 (() => {
   const CURRENT_USER = 'Hooks::UseCurrentUser';
-  const fixtureIdentity = new URL(location.href).searchParams.get('identity') === 'fixture';
-  const guestActivity = new URL(location.href).searchParams.get('identity') === 'guest';
+  // URL role selects a SYNTHETIC proof, not server authority. The fixture's
+  // authoritative BBB registry independently verifies that proof on every call.
+  const initialRole = new URL(location.href).searchParams.get('role') || 'MODERATOR';
+  const guest = () => document.getElementById('role').value === 'VIEWER';
   const roleResponse = (role) => role === 'LOADING' ? { loading: true }
     : role === 'ERROR' ? { loading: false, error: { message: 'Synthetic role error' } }
-      : { loading: false, data: { userId: 'w_teacher', extId: '17', name: 'Synthetic teacher', role } };
-  const initialRole = new URL(location.href).searchParams.get('role') || 'MODERATOR';
+      : { loading: false, data: { userId: role === 'VIEWER' ? 'w_guest' : 'w_teacher',
+        extId: role === 'VIEWER' ? '' : '17', name: role === 'VIEWER' ? 'Fixture learner' : 'Fixture host', role } };
   document.getElementById('role').value = initialRole;
+  document.querySelector('#sidekick').setAttribute('aria-label', 'Live panel');
   let userResult = roleResponse(initialRole);
   let contentRoot;
   let activeId;
@@ -23,38 +26,33 @@
   const sendUser = () => window.dispatchEvent(new CustomEvent('BBB_CORE_SENT_NEW_DATA', {
     detail: { hook: CURRENT_USER, data: userResult },
   }));
+  const metadataSubscriptions = new Map();
+  const sendMetadata = ({ hook, hookArguments }) => window.dispatchEvent(new CustomEvent('BBB_CORE_SENT_NEW_DATA', {
+    detail: { hook, hookArguments, data: { loading: false, data: { data: { user_metadata: guest()
+      ? [] : [{ parameter: 'schoolcore_context_token', value: 'fixture-core-teacher' }] } } } },
+  }));
   window.addEventListener('PLUGIN_SUBSCRIBED_TO_BBB_CORE', (event) => {
     if (event.detail.hook === CURRENT_USER) { queueMicrotask(sendUser); return; }
     const { hook, hookArguments } = event.detail;
-    let data;
     if (hookArguments?.query?.includes('LGUActivitiesUserMetadata')) {
-      data = { data: { user_metadata: fixtureIdentity
-        ? [{ parameter: 'schoolcore_context_token', value: 'fixture-core-teacher' }] : [] } };
-    } else if (hookArguments?.query?.includes('pluginSettingsSubscription')) {
-      data = { meeting_clientPluginSettings: [{ settings: { liveActivityId: fixtureIdentity || guestActivity ? 'fixture-live-one' : '' } }] };
-    } else if (hookArguments?.query?.includes('LGUActivitiesPresence')) {
-      const active = { joined: true, currentlyInMeeting: true, disconnected: false, loggedOut: false, expired: false, bot: false };
-      data = { data: { user: [
-        { ...active, userId: 'w_teacher', extId: '17', name: 'Synthetic teacher' },
-        { ...active, userId: 'w_student_a', extId: '29', name: 'Same display name' },
-        { ...active, userId: 'w_student_b', extId: '31', name: 'Same display name' },
-        { ...active, userId: 'w_guest', extId: '', name: 'Same display name' },
-      ] } };
-    } else throw new Error('Unexpected SDK hook in identity harness');
-    queueMicrotask(() => window.dispatchEvent(new CustomEvent('BBB_CORE_SENT_NEW_DATA', {
-      detail: { hook, hookArguments, data: { loading: false, data } },
-    })));
+      metadataSubscriptions.set(JSON.stringify(hookArguments), { hook, hookArguments });
+      queueMicrotask(() => sendMetadata({ hook, hookArguments }));
+    } else throw new Error('Unexpected SDK hook in Live harness');
+  });
+  window.addEventListener('PLUGIN_UNSUBSCRIBED_FROM_BBB_CORE', (event) => {
+    metadataSubscriptions.delete(JSON.stringify(event.detail.hookArguments));
   });
   document.getElementById('role').addEventListener('change', (event) => {
     const role = event.target.value;
     userResult = roleResponse(role);
     sendUser();
+    for (const subscription of metadataSubscriptions.values()) sendMetadata(subscription);
   });
   document.getElementById('close').addEventListener('click', close);
   window.bbb_plugins = {
     'plugin-root': {
       pluginName: 'LGUActivities',
-      getSessionToken() { return 'fixture-bbb-teacher'; },
+      getSessionToken() { return guest() ? 'fixture-bbb-guest' : 'fixture-bbb-teacher'; },
       setGenericContentItems(items) {
         queueMicrotask(() => {
           if (activeId && !items.some((item) => item.id === activeId)) close();

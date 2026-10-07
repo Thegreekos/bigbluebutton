@@ -1,6 +1,6 @@
 {
   "name": "bbb-plugin-lgu-activities",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "BBB4 LGU Activities identity contract and integration adapter; no game engine or LGU backend calls.",
   "scripts": {

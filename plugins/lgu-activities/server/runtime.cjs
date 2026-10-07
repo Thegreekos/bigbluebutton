@@ -3,6 +3,9 @@ const http = require('node:http');
 const { createPrivateKey, createPublicKey } = require('node:crypto');
 const { createProductionIdentityService } = require('./production-integration.cjs');
 const { createIdentityHttpHandler } = require('./http-handler.cjs');
+const { createFederationClient } = require('./federation-client.cjs');
+const { createLiveBff } = require('./live-bff.cjs');
+const { createLiveHttpHandler } = require('./live-http-handler.cjs');
 
 const CONFIG = '/etc/bigbluebutton/lgu-activities/adapter.json';
 const SIGNING_KEY = '/etc/bigbluebutton/lgu-activities/activity-signing-key.pem';
@@ -29,12 +32,18 @@ async function start() {
     audience: 'lgu-activities-adapter-v1', kid: 'bbb4-activity-identity-v1',
   });
   const handler = createIdentityHttpHandler({ service, origin: config.origin });
+  // Opt-in only. Existing production identity mode remains unchanged when off.
+  const bff = config.federation?.enabled === true ? createLiveBff({ identityService: service,
+    client: createFederationClient({ origin: config.federation.origin, issuerId: config.federation.issuerId }),
+    pluginCommit: config.federation.pluginCommit ?? 'unreleased' }) : null;
+  const liveHandler = createLiveHttpHandler({ bff, origin: config.origin });
   const server = http.createServer((request, response) => {
     if (request.url === '/healthz' && request.method === 'GET') {
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       response.end(JSON.stringify({ status: 'ready', meetingScope: 'all-verified-bbb', modes: ['core', 'guest'] })); return;
     }
-    handler(request, response).catch(() => {
+    const selectedHandler = request.url?.startsWith('/api/lgu-activities/v1/live/') ? liveHandler : handler;
+    selectedHandler(request, response).catch(() => {
       if (!response.headersSent) response.writeHead(503);
       response.end();
     });
@@ -43,7 +52,7 @@ async function start() {
   server.maxHeadersCount = 40;
   server.on('error', () => { console.error('LGU adapter runtime FAIL'); process.exitCode = 1; });
   server.listen(4703, '127.0.0.1', () => console.log('LGU adapter runtime READY (loopback, verified BBB meetings)'));
-  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.close());
+  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { bff?.dispose(); server.close(); });
 }
 if (require.main === module) start().catch(() => { console.error('LGU adapter startup FAIL'); process.exitCode = 1; });
 module.exports = { start };

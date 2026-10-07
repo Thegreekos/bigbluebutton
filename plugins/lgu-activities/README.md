@@ -1,4 +1,10 @@
-# LGU Activities — Production participant integration (0.3.0)
+# LGU Activities — In-BBB Live BFF (0.4.0, not deployed)
+
+Current source adds contract-pinned LGU federation HMAC transport, server-only LGU cookie vault, closed federation entry, ordinary engine state/stream/answer proxy and inline moderator/learner panel. See [`FEDERATION_BFF.md`](FEDERATION_BFF.md). Production remains0.3.0; no files/services/config/assets were installed in this task. Federation is opt-in and returns503 until a registered issuer, protected issuer secret and trusted LGU test origin are provisioned. No iframe, LGU tab/window, browser LGU cookie/secret or BBB scoring engine.
+
+Build/check with `npm ci`, `npm run check`, `npm run test:browser`. Local contract demo `npm start -- --live-fixtures`: two isolated browser roles in the loopback-only harness use the real built SDK/UI/BFF, **scripted mock LGU responses**, not a real engine or BBB meeting. Pinned LGU source36cd87f9 was inspected read-only, never imported at runtime. Default local server has no federation backend.
+
+`FEDERATION_BFF.md` is current architecture/rollout guidance; prior0.3 production notes below remain historical deployed-state references.
 
 **Current:** official loader + real Core/guest acceptance passed. `bbb-lgu-activities` is running and enabled for boot for all verified BBB meetings, not one acceptance lesson. Core association is optional; verified BBB moderator controls organiser authority. Read [`IDENTITY_V2.md`](IDENTITY_V2.md) and [`PRODUCTION_MODES_ACCEPTANCE.md`](PRODUCTION_MODES_ACCEPTANCE.md). The remainder of this README documents previous 0.2.0 operations where marked; v2 is authoritative.
 

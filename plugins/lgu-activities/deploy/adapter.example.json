@@ -1,5 +1,8 @@
 {
   "origin": "https://meet.thegreekos.com",
   "meetingScope": "all-verified-bbb",
-  "allowedActivityIds": []
+  "allowedActivityIds": [],
+  "federation": {
+    "enabled": false
+  }
 }

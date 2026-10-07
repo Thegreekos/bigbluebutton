@@ -18,3 +18,24 @@ location ~ ^/api/lgu-activities/v1/(self|identity|contexts|identities|verify)$ {
   proxy_buffering off;
   proxy_cache off;
 }
+
+# Optional federation BFF (enable only with the reviewed server federation config).
+location ~ ^/api/lgu-activities/v1/live/(context|create|enter|state|stream|command|answer)$ {
+  client_max_body_size 16k;
+  limit_req zone=lgu_identity_requests burst=60 nodelay;
+  limit_req_status 429;
+  access_log off;
+  proxy_pass http://127.0.0.1:4703;
+  proxy_http_version 1.1;
+  proxy_set_header Connection "";
+  proxy_set_header Host $host;
+  proxy_set_header Origin $http_origin;
+  proxy_set_header Authorization $http_authorization;
+  proxy_set_header X-BBB-Session-Token $http_x_bbb_session_token;
+  proxy_set_header Cookie $http_cookie;
+  proxy_connect_timeout 3s;
+  proxy_read_timeout 25s;
+  proxy_send_timeout 25s;
+  proxy_buffering off;
+  proxy_cache off;
+}

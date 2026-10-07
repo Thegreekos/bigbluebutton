@@ -21,6 +21,7 @@ assert.deepEqual(manifest.settingsSchema, [
 ]);
 assert.doesNotMatch(bundle.toString(), /fixture-core-|fixture-bbb-|fixture-ephemeral-key|BEGIN PRIVATE KEY/);
 assert.doesNotMatch(bundle.toString(), /classroom_introspection_token|classroom\/token\/introspect|CORE_SERVICE_AUTH_FAILED/);
+assert.doesNotMatch(bundle.toString(), /federation_issuer_secret|LGU-FEDERATION-V1|X-LGU-Federation-Signature|lgu_fed=|lgu_session=|lgu_live=/i);
 assert.equal(manifest.eventPersistence.isEnabled, false);
 assert.equal(manifest.enabledForBreakoutRooms, false);
 console.log(`Bundle/manifest/SDK/SRI checks passed (${bundle.length} bytes).`);
