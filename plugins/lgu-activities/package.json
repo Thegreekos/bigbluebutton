@@ -6,6 +6,7 @@
   "scripts": {
     "build": "webpack --mode production && node scripts/build-manifest.cjs",
     "build-bundle": "npm run build",
+    "stage:player": "node scripts/stage-player-artifact.cjs",
     "test": "node --test tests/*.test.cjs",
     "check": "npm test && npm run build && node scripts/check-bundle.cjs",
     "test:browser": "node tests/browser-smoke.cjs",

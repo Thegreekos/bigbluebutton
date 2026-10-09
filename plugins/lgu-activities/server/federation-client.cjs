@@ -35,6 +35,24 @@ function safeView(value) {
     .filter(([key]) => !privateKeys.has(key.toLowerCase()) && !privateKeys.has(key)).map(([k, v]) => [k, safeView(v)]));
   return value;
 }
+function validPrivateResourcePath(path) {
+  if (typeof path !== 'string' || path.length > 4096 || /[\r\n#\\]/.test(path) || path.includes('..')) return false;
+  if (/^\/media\/[a-z0-9_-]{1,128}\/[a-z0-9._-]{1,255}$/i.test(path)) return true;
+  if (!path.startsWith('/api/audio?')) return false;
+  const url = new URL(path, 'https://lgu.invalid');
+  if (url.pathname !== '/api/audio') return false;
+  const allowed = new Set(['mode', 'id', 'qid', 'version', 'lang', 'segment']);
+  for (const key of url.searchParams.keys()) if (!allowed.has(key) || url.searchParams.getAll(key).length !== 1) return false;
+  const mode = url.searchParams.get('mode');
+  const id = url.searchParams.get('id');
+  const lang = url.searchParams.get('lang');
+  const segment = url.searchParams.get('segment');
+  return ['live', 'round', 'learning'].includes(mode)
+    && /^[\da-f-]{36}$/i.test(id || '') && ['el', 'en'].includes(lang)
+    && /^[a-z0-9:_-]{1,100}$/i.test(segment || '')
+    && (!url.searchParams.has('qid') || /^[\da-f-]{36}$/i.test(url.searchParams.get('qid')))
+    && (!url.searchParams.has('version') || /^\d{1,10}$/.test(url.searchParams.get('version')));
+}
 class CookieVault {
   constructor(clock) { this.clock = clock; this.cookies = new Map(); }
   absorb(headers) {
@@ -80,7 +98,9 @@ function createFederationClient({ origin, issuerId, readSecret = readFederationS
       const cookie = vault?.header(); if (cookie) headers.Cookie = cookie;
     }
     let response;
-    const timeout = AbortSignal.timeout(stream ? 20000 : 8000);
+    // A player stream is long-lived. The browser disconnect signal owns its lifetime;
+    // the generous cap is only a final bound for orphaned server-side connections.
+    const timeout = AbortSignal.timeout(stream ? 12 * 60 * 60 * 1000 : 8000);
     try { response = await fetchImpl(origin + path, { method, headers, body: method === 'GET' ? undefined : body,
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout }); }
     catch { throw new ContractError('LGU_UNAVAILABLE', 503); }
@@ -105,6 +125,29 @@ function createFederationClient({ origin, issuerId, readSecret = readFederationS
       return result;
     } catch { await response.body?.cancel().catch(() => {}); throw new ContractError('LGU_INVALID_RESPONSE', 502); }
   }
-  return { request, vault: () => new CookieVault(clock), clock };
+  async function resource(path, { vault, signal, accept = '*/*', client = 'web/0.1.0' } = {}) {
+    if (!validPrivateResourcePath(path) || !vault?.header()) throw new ContractError('FEDERATION_PATH_DENIED', 400);
+    const timeout = AbortSignal.timeout(60000);
+    let response;
+    try {
+      response = await fetchImpl(origin + path, { method: 'GET', headers: { Accept: accept,
+        'X-LGU-Client': /^[\w./-]{1,80}$/.test(client) ? client : 'web/0.1.0',
+        Origin: origin, Cookie: vault.header() }, redirect: 'error', credentials: 'omit', cache: 'no-store',
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    } catch { throw new ContractError('LGU_UNAVAILABLE', 503); }
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      const status = [401, 403, 404, 409, 429, 416].includes(response.status) ? response.status : 503;
+      throw new ContractError(`LGU_${status}`, status);
+    }
+    vault.absorb(response.headers);
+    const type = response.headers.get('content-type') || '';
+    if (!/^(?:image|audio)\/[a-z0-9.+-]+(?:\s*;|$)/i.test(type) || !response.body) {
+      await response.body?.cancel().catch(() => {});
+      throw new ContractError('LGU_INVALID_RESPONSE', 502);
+    }
+    return response;
+  }
+  return { request, resource, vault: () => new CookieVault(clock), clock };
 }
-module.exports = { PREFIX, SECRET, signatureHeaders, safeView, CookieVault, createFederationClient, readFederationSecret };
+module.exports = { PREFIX, SECRET, signatureHeaders, safeView, validPrivateResourcePath, CookieVault, createFederationClient, readFederationSecret };

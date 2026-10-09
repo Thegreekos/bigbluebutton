@@ -42,7 +42,8 @@ async function start() {
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       response.end(JSON.stringify({ status: 'ready', meetingScope: 'all-verified-bbb', modes: ['core', 'guest'] })); return;
     }
-    const selectedHandler = request.url?.startsWith('/api/lgu-activities/v1/live/') ? liveHandler : handler;
+    const selectedHandler = request.url?.startsWith('/api/lgu-activities/v1/live/')
+      || request.url?.startsWith('/api/lgu-activities/v1/player/') ? liveHandler : handler;
     selectedHandler(request, response).catch(() => {
       if (!response.headersSent) response.writeHead(503);
       response.end();

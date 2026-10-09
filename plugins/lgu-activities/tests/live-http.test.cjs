@@ -39,10 +39,12 @@ async function harness(t, bff) {
   handler = createLiveHttpHandler({ bff, origin });
   t.after(async () => { bff?.dispose?.(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
   // Raw http deliberately preserves paths that WHATWG fetch would normalize.
-  function request({ operation = 'context', path = ROUTE + operation, method = 'POST', raw = '{}', headers = {} } = {}) {
+  function request({ operation = 'context', path = ROUTE + operation, method = 'POST', raw = '{}', headers = {}, omitOrigin = false } = {}) {
     return new Promise((resolve, reject) => {
-      const req = http.request(origin, { path, method, headers: { Origin: origin, 'Content-Type': 'application/json',
-        'X-BBB-Session-Token': 'fixture-bbb', Cookie: 'bbb_fixture=1', ...headers } }, res => {
+      const requestHeaders = { Origin: origin, 'Content-Type': 'application/json',
+        'X-BBB-Session-Token': 'fixture-bbb', Cookie: 'bbb_fixture=1', ...headers };
+      if (omitOrigin) delete requestHeaders.Origin;
+      const req = http.request(origin, { path, method, headers: requestHeaders }, res => {
         const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('error', reject);
         res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(chunks).toString('utf8') }));
       }); req.on('error', reject); req.end(raw);
@@ -51,8 +53,17 @@ async function harness(t, bff) {
   return { server, origin, request };
 }
 function spyBff(result = { ok: true }) {
-  const calls = [];
-  return { calls, async handle(...args) { calls.push(args); return typeof result === 'function' ? result(...args) : result; } };
+  const calls = []; const playerCalls = []; const resourceCalls = [];
+  return { calls, playerCalls, resourceCalls,
+    async handle(...args) { calls.push(args); return typeof result === 'function' ? result(...args) : result; },
+    async handlePlayer(...args) { playerCalls.push(args); const [operation] = args;
+      return operation === 'stream' ? streamResponse([frame('phase', { seq: 9 }, 9)])
+        : operation === 'answer' ? { accepted: true, elapsedMs: 42 } : { session: { id: SESSION, phase: 'open' } }; },
+    async handlePlayerResource(...args) { resourceCalls.push(args); return new Response(Uint8Array.from([1, 2, 3]), {
+      headers: { 'Content-Type': args[0].startsWith('/api/audio') ? 'audio/mpeg' : 'image/webp',
+        'Content-Length': '3', 'Set-Cookie': `lgu_live=${LIVE}`, 'X-Private': SECRET },
+    }); },
+  };
 }
 function assertBoundary(reply, status, code) {
   assert.equal(reply.status, status, reply.text);
@@ -295,4 +306,69 @@ test('guest HTTP reconnect streams use ordinary cookie route and never launch or
     assert.match(c.path, new RegExp(`^/api/v1/live/${SESSION}/stream\\?after=(0|8)$`));
     assert.ok(c.headers.get('cookie').includes(`lgu_live=${LIVE}`)); assert.equal(c.headers.has('x-lgu-federation-signature'), false);
   }
+});
+
+test('native player state, stream and answer requests map to existing authenticated BFF operations', async t => {
+  const bff = spyBff(); const h = await harness(t, bff);
+  const base = `/api/lgu-activities/v1/player/api/v1/live/${SESSION}`;
+  const state = await h.request({ method: 'GET', path: `${base}?lang=el`, raw: '' });
+  assert.equal(state.status, 200); assert.deepEqual(JSON.parse(state.text), { session: { id: SESSION, phase: 'open' } });
+  assert.equal(bff.playerCalls.at(-1)[0], 'state'); assert.deepEqual(bff.playerCalls.at(-1)[2], { sessionId: SESSION });
+  const stream = await h.request({ method: 'GET', path: `${base}/stream?after=8&lang=el`, raw: '' });
+  assert.equal(stream.status, 200); assert.match(stream.headers['content-type'], /^text\/event-stream/);
+  assert.equal(stream.text, frame('phase', { seq: 9 }, 9));
+  assert.equal(bff.playerCalls.at(-1)[0], 'stream'); assert.deepEqual(bff.playerCalls.at(-1)[2], { sessionId: SESSION, after: 8 });
+  const answer = await h.request({ method: 'POST', path: `${base}/answer?lang=el`, raw: JSON.stringify({
+    questionIndex: 1, phaseVersion: 12, answer: ['choice-b'],
+  }), headers: { 'X-LGU-Request': '1', Authorization: 'Bearer fixture-core' } });
+  assert.equal(answer.status, 200); assert.deepEqual(JSON.parse(answer.text), { accepted: true, elapsedMs: 42 });
+  assert.equal(bff.playerCalls.at(-1)[0], 'answer');
+  assert.deepEqual(bff.playerCalls.at(-1)[2], { sessionId: SESSION, questionIndex: 1, phaseVersion: 12, answer: ['choice-b'] });
+  assert.equal(bff.playerCalls.at(-1)[1].sessionToken, 'fixture-bbb');
+  assert.equal(bff.playerCalls.at(-1)[1].coreToken, 'fixture-core');
+});
+
+test('originless browser GET requires same-origin Fetch Metadata; mutation remains exact-Origin only', async t => {
+  const bff = spyBff(); const h = await harness(t, bff);
+  const state = `/api/lgu-activities/v1/player/api/v1/live/${SESSION}`;
+  assert.equal((await h.request({ method: 'GET', path: state, raw: '', omitOrigin: true,
+    headers: { 'Sec-Fetch-Site': 'same-origin' } })).status, 200);
+  assert.equal(bff.playerCalls.at(-1)[0], 'state');
+  assertBoundary(await h.request({ method: 'GET', path: state, raw: '', omitOrigin: true }), 403, 'ORIGIN_DENIED');
+  assert.equal((await h.request({ method: 'POST', path: `${state}/answer`, raw: JSON.stringify({
+    questionIndex: 0, phaseVersion: 1, answer: ['a'],
+  }), omitOrigin: true, headers: { 'X-LGU-Request': '1' } })).status, 403);
+  assert.equal(bff.playerCalls.length, 1, 'unproven cross-site reads and originless mutations never reach BFF');
+});
+
+test('private media and audio use authenticated resource proxy and never expose upstream cookies or headers', async t => {
+  const bff = spyBff(); const h = await harness(t, bff);
+  for (const [path, type] of [
+    ['/media/odyssey/ship.webp', /^image\/webp/],
+    ['/api/audio?mode=live&id=22222222-2222-4222-8222-222222222222&lang=el&segment=prompt', /^audio\/mpeg/],
+  ]) {
+    const reply = await h.request({ method: 'GET', path: `/api/lgu-activities/v1/player${path}`, raw: '',
+      headers: { Accept: path.startsWith('/media') ? 'image/*' : 'audio/*', 'X-LGU-Client': 'web/0.1.0' } });
+    assert.equal(reply.status, 200); assert.match(reply.headers['content-type'], type);
+    assert.equal(reply.headers['cache-control'], 'private, no-store');
+    assert.equal(reply.headers['set-cookie'], undefined); assert.equal(reply.headers['x-private'], undefined);
+    assert.deepEqual([...Buffer.from(reply.text, 'binary')], [1, 2, 3]);
+    assert.equal(bff.resourceCalls.at(-1)[0], path);
+    assert.equal(bff.resourceCalls.at(-1)[1].sessionToken, 'fixture-bbb');
+  }
+  assert.doesNotMatch(JSON.stringify(bff.resourceCalls.map(call => call[0])), /SSSSSS|LLLLLL/);
+});
+
+test('player route rejects arbitrary paths, duplicate query keys, methods and answer authority fields', async t => {
+  const bff = spyBff(); const h = await harness(t, bff);
+  const base = `/api/lgu-activities/v1/player`;
+  for (const path of [`${base}/api/v1/live/${SESSION}/leave`, `${base}/api/v1/live/${SESSION}?url=https://evil.test`,
+    `${base}/api/v1/live/${SESSION}/stream?after=1&after=2`, `${base}/media/../secret`, `${base}/api/audio?admin=1`]) {
+    assert.equal((await h.request({ method: 'GET', path, raw: '' })).status, 404, path);
+  }
+  assert.equal((await h.request({ method: 'PUT', path: `${base}/api/v1/live/${SESSION}`, raw: '' })).status, 405);
+  const answer = await h.request({ method: 'POST', path: `${base}/api/v1/live/${SESSION}/answer`,
+    raw: JSON.stringify({ questionIndex: 0, phaseVersion: 1, answer: ['a'], points: 999 }),
+    headers: { 'X-LGU-Request': '1' } });
+  assert.equal(answer.status, 400); assert.equal(bff.playerCalls.length, 0); assert.equal(bff.resourceCalls.length, 0);
 });

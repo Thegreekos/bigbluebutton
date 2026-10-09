@@ -12,6 +12,7 @@
     button, select { padding: 10px 14px; margin: 4px; border-radius: 8px; border: 1px solid #b5c2d2; font: inherit; }
     button { cursor: pointer; background: white; }
     button:focus-visible { outline: 3px solid #3c50a0; }
+    #stage { min-height: 360px; margin: 20px; padding: 20px; background: #fff; border: 1px solid #b5c2d2; border-radius: 12px; }
     #sidekick { background: white; border-radius: 16px; margin: 20px; max-width: 440px; overflow: hidden; box-shadow: 0 8px 32px #172b4320; }
     #sidekick[hidden] { display: none; }
     #plugin-root { display: none; }
@@ -23,6 +24,7 @@
     <label>BBB role <select id="role"><option>MODERATOR</option><option>VIEWER</option><option>LOADING</option><option>ERROR</option></select></label>
   </header>
   <nav aria-label="Apps"><h2>Apps</h2><div id="apps"></div></nav>
+  <main id="stage" aria-label="BBB presentation stage">BBB presentation / whiteboard</main>
   <aside id="sidekick" hidden aria-label="Teacher panel"><button id="close" type="button">Κλείσιμο panel</button><div id="content"></div></aside>
   <div id="plugin-root"></div>
   <script src="/react.js"></script>

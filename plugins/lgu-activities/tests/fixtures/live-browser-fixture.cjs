@@ -46,7 +46,7 @@ async function createLiveBrowserFixture() {
       openedAt: phase === 'open' ? ms : null, deadline: phase === 'open' ? ms + 20000 : null,
       serverTime: ms, settings: { basePoints: 100, speedBonus: 50, graceMs: 300, bucketMs: 250 },
       code: 'PRIVATE_JOIN_CODE', joinPath: '/live/join/PRIVATE_JOIN_CODE', pending: [], eventAccess: actor.host,
-      question: phase === 'lobby' ? null : { index: 0, total: 1, id: 'fixture-question', kind: 'choice',
+      question: ['lobby', 'finished'].includes(phase) ? null : { index: 0, total: 1, id: 'fixture-question', kind: 'choice',
         prompt: 'Choose the fixture answer', options: [{ id: 'a', text: 'First fixture option' },
           { id: 'b', text: 'Second fixture option' }], timeLimitSeconds: 20,
         deadline: phase === 'open' ? ms + 20000 : null },
@@ -159,7 +159,8 @@ async function createLiveBrowserFixture() {
           assert.equal(signed, true); assert.equal(actor, teacher); assert.equal(options.method, 'POST');
           if (stale) { stale = false; return json({ error: 'PRIVATE_UPSTREAM_STACK', ticket: teacher.ticket, secret }, [], 409); }
           const scripted = { start: ['lobby', 0, 'prepare', 1], open: ['prepare', 1, 'open', 2],
-            close: ['open', 2, 'closed', 3], reveal: ['closed', 3, 'reveal', 4] }[data.action];
+            close: ['open', 2, 'closed', 3], reveal: ['closed', 3, 'reveal', 4],
+            finish: ['reveal', 4, 'finished', 5] }[data.action];
           assert.ok(scripted, 'only explicitly designed canned transitions exist');
           assert.deepEqual([phase, phaseVersion], scripted.slice(0, 2));
           assert.deepEqual(data, { principalId: teacher.id, action: data.action, expectedVersion: phaseVersion });
@@ -175,8 +176,11 @@ async function createLiveBrowserFixture() {
           assert.equal(options.method, 'GET'); assert.equal(h.get('accept'), 'text/event-stream');
           assert.match(u.searchParams.get('after'), /^\d+$/);
           assert.equal(u.pathname, actor.host ? PREFIX + `sessions/${SESSION}/stream` : `/api/v1/live/${SESSION}/stream`);
-          // Bounded hello + EOF: no long-lived timers or engine simulation.
-          return new Response(`event: hello\ndata: {"seq":${phaseVersion},"ticket":"${guest.ticket}"}\n\n`,
+          // Bounded hello + one scripted authoritative phase entry, then EOF.
+          // This lets the real player's client reload the fixture state after a
+          // command without simulating an engine or keeping background timers.
+          return new Response(`event: hello\ndata: {"seq":${phaseVersion},"ticket":"${guest.ticket}"}\n\n`
+            + `id: ${phaseVersion}\nevent: phase\ndata: {"seq":${phaseVersion},"kind":"phase"}\n\n`,
             { headers: { 'Content-Type': 'text/event-stream', 'Set-Cookie': cookie('lgu_live', guest.live) } });
         }
         assert.equal(options.method, 'GET');

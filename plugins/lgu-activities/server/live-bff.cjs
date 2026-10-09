@@ -1,5 +1,5 @@
 const { ContractError } = require('./identity-service.cjs');
-const { PREFIX, safeView } = require('./federation-client.cjs');
+const { PREFIX, safeView, validPrivateResourcePath } = require('./federation-client.cjs');
 const pkg = require('../package.json');
 const id = value => typeof value === 'string' && /^[\da-f-]{36}$/i.test(value);
 function bodyKeys(body, keys) {
@@ -149,6 +149,39 @@ function createLiveBff({ identityService, client, maxSessions = 1000, pluginComm
           const options = { stream: true, signal, ...(auth.identity.organiser ? { signed: true } : { vault: r.vault }) };
           return client.request('GET', auth.identity.organiser ? signedPath(hostPath + '/stream', r, body.after)
             : learnerPath + `/stream?after=${body.after}`, undefined, options);
+        } catch (error) {
+          if ([401, 403, 404, 502, 503].includes(error.status)) forget(key);
+          throw error;
+        }
+      });
+    },
+    async handlePlayer(operation, proof, body, signal) {
+      if (operation === 'state') return this.handle('state', proof, { sessionId: body.sessionId }, signal);
+      if (operation === 'stream') return this.handle('stream', proof, { sessionId: body.sessionId, after: body.after }, signal);
+      if (operation === 'answer') return this.handle('answer', proof, { sessionId: body.sessionId,
+        questionIndex: body.questionIndex, phaseVersion: body.phaseVersion, answer: body.answer }, signal);
+      throw new ContractError('NOT_FOUND', 404);
+    },
+    async handlePlayerResource(path, proof, signal, headers = {}) {
+      if (!validPrivateResourcePath(path)) throw new ContractError('NOT_FOUND', 404);
+      const proofKey = require('node:crypto').createHash('sha256').update(String(proof?.sessionToken ?? '')).digest('hex');
+      let auth;
+      try { auth = await authenticated(proof); }
+      catch (error) { const previous = proofKeys.get(proofKey); if (previous) forget(previous); throw error; }
+      const key = keyOf(auth);
+      return locked(key, async () => {
+        try {
+          const r = await record(auth);
+          const audioSession = path.startsWith('/api/audio?') ? new URL(path, 'https://lgu.invalid').searchParams.get('id') : null;
+          // Learner media is available only after this same principal entered a live room.
+          // A host's activated Core credential may read its own permitted media.
+          if (!r.vault.header() || (!auth.identity.organiser
+            && (r.entered.size === 0 || (audioSession && !r.entered.has(audioSession))))) {
+            throw new ContractError('LIVE_ENTRY_REQUIRED', 403);
+          }
+          proofKeys.set(proofKey, key);
+          return await client.resource(path, { vault: r.vault, signal, accept: headers.accept,
+            client: headers.client });
         } catch (error) {
           if ([401, 403, 404, 502, 503].includes(error.status)) forget(key);
           throw error;

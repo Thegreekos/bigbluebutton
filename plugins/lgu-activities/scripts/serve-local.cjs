@@ -7,6 +7,8 @@ const { createLiveHttpHandler } = require('../server/live-http-handler.cjs');
 function createLocalServer({ identityService, liveBff } = {}) {
   const root = path.resolve(__dirname, '..');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'dist/manifest.json'), 'utf8'));
+  const playerCommit = '56e438e67c977113bcbd513591d440b2b140e893';
+  const playerBase = `/plugins/lgu-activities/player/${playerCommit}`;
   // Explicit route allowlist: never serve secrets/source directories or proxy APIs.
   const routes = new Map([
     ['/', ['tests/local-host.html', 'text/html; charset=utf-8']],
@@ -16,12 +18,22 @@ function createLocalServer({ identityService, liveBff } = {}) {
     ['/bundle.js', [`dist/${manifest.javascriptEntrypointUrl}`, 'text/javascript; charset=utf-8']],
     [`/${manifest.javascriptEntrypointUrl}`, [`dist/${manifest.javascriptEntrypointUrl}`, 'text/javascript; charset=utf-8']],
   ]);
+  const playerTypes = { '.js': 'text/javascript; charset=utf-8', '.map': 'application/json',
+    '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.json': 'application/json', '.d.ts': 'text/plain; charset=utf-8' };
+  const playerManifest = JSON.parse(fs.readFileSync(path.join(root, `assets/player/${playerCommit}/manifest.json`), 'utf8'));
+  for (const relative of ['manifest.json', ...Object.keys(playerManifest.files || {})]) {
+    if (relative.includes('..') || path.isAbsolute(relative)) throw new Error('Invalid pinned player manifest path');
+    const ext = relative.endsWith('.d.ts') ? '.d.ts' : path.extname(relative);
+    routes.set(`${playerBase}/${relative}`, [`assets/player/${playerCommit}/${relative}`,
+      playerTypes[ext] || 'application/octet-stream']);
+  }
   let identityHandler;
   let liveHandler;
   const server = http.createServer((request, response) => {
     // Live routes must precede the legacy identity prefix. Even without an
     // injected BFF, use the actual handler's sanitized not-configured response.
-    if (request.url.startsWith('/api/lgu-activities/v1/live/')) {
+    if (request.url.startsWith('/api/lgu-activities/v1/live/')
+      || request.url.startsWith('/api/lgu-activities/v1/player/')) {
       liveHandler ||= createLiveHttpHandler({ bff: liveBff,
         origin: `http://127.0.0.1:${server.address().port}` });
       void liveHandler(request, response);

@@ -2,12 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
 const { create, act } = require('react-test-renderer');
-const { TeacherPanel, ACTIVITIES } = require('../src/panel');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-// The SDK top-level logger requires a browser document. Use its real, DOM-free
-// constructor for Node tests, just as Lesson Assistant's registration tests do.
 const sdk = require('bigbluebutton-html-plugin-sdk/dist/cjs/extensible-areas/generic-content-item/component');
 const registration = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/registration.js'), 'utf8'), {
@@ -19,70 +16,72 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/registration.js'
   },
 });
 const { PANEL_ID, useActivitiesRegistration } = registration.exports;
-const unavailableApi = () => ({
-  useCurrentUser: () => ({ loading: false, data: { role: 'MODERATOR' } }),
-  useCustomQuery: () => ({ loading: false, data: { user_metadata: [] } }),
-  usePluginSettings: () => ({ loading: false, data: {} }),
-  useCustomSubscription: () => ({ loading: false, data: { user: [] } }),
-  getSessionToken: () => undefined,
-});
+const { ControllerPanel } = require('../src/controller-panel');
+const { publishController } = require('../src/controller-store');
 
-test('one sidekick, no explicit gallery duplicate, stable rerender and cleanup', () => {
-  let items = [];
-  let calls = 0;
-  const pluginApi = {
-    setGenericContentItems(value) { items = value; calls += 1; },
-    setAppsGalleryItems() { assert.fail('Sidekick must not create a duplicate app'); },
-  };
-  const props = { pluginApi, teacher: false, icon: {}, contentFunction() {} };
-  function Hook(p) { useActivitiesRegistration(p); return null; }
+function hookRoot(props) {
+  let registered = [];
+  const calls = [];
+  const pluginApi = { setGenericContentItems(items) { registered = items; calls.push(items); return items.map(item => item.id); } };
+  function Hook(value) { useActivitiesRegistration({ pluginApi, ...value }); return null; }
   let root;
   act(() => { root = create(React.createElement(Hook, props)); });
-  assert.equal(items.length, 0);
-  act(() => root.update(React.createElement(Hook, { ...props, teacher: true })));
-  assert.equal(items.length, 1);
-  assert.equal(items[0].id, PANEL_ID);
-  assert.equal(items[0].name, 'LGU Activities');
-  assert.equal(items[0].open, false);
-  assert.equal(items[0].contentFunction, props.contentFunction);
-  const previousCalls = calls;
-  act(() => root.update(React.createElement(Hook, { ...props, teacher: true })));
-  assert.equal(calls, previousCalls);
-  act(() => root.update(React.createElement(Hook, props)));
-  assert.equal(items.length, 0);
-  act(() => root.update(React.createElement(Hook, { ...props, teacher: true })));
-  act(() => root.unmount());
-  assert.equal(items.length, 0);
+  return { get items() { return registered; }, calls, update(next) { act(() => root.update(React.createElement(Hook, next))); },
+    unmount() { act(() => root.unmount()); } };
+}
+
+const runtime = overrides => ({ ready: true, status: 'ready', error: null,
+  context: { themes: [{ id: 'odyssey', title: 'Odyssey' }], sessions: [{ id: 'room', themeTitle: 'Odyssey', phase: 'open' }] },
+  session: { id: 'room', role: 'host', themeTitle: 'Odyssey', phase: 'open', phaseVersion: 8 },
+  connection: 'streaming', busy: false, canHost: true, selectedId: 'room', selectedSummary: { id: 'room', phase: 'open' },
+  showMainStage: true, createSession() {}, command() {}, selectSession() {}, refresh() {}, ...overrides });
+
+test('moderator gets controller sidekick and the official main stage item only while active', () => {
+  const content = () => {};
+  const hook = hookRoot({ teacher: true, icon: {}, activeSessionId: 'room', mainContentFunction: content });
+  assert.equal(hook.items.length, 2);
+  assert.equal(hook.items[0].id, PANEL_ID);
+  assert.equal(hook.items[0].name, 'LGU Activities');
+  assert.equal(hook.items[0].open, false);
+  assert.equal(hook.items[1] instanceof sdk.GenericContentMainArea, true);
+  assert.equal(hook.items[1].id, 'lgu-live-main-room');
+  assert.equal(hook.items[1].contentFunction, content);
+  const controllerMount = hook.items[0].contentFunction;
+  hook.update({ teacher: true, icon: {}, activeSessionId: '', mainContentFunction: null });
+  assert.equal(hook.items.length, 1, 'Finish removes the stage item and restores BBB presentation');
+  assert.equal(hook.items[0].contentFunction, controllerMount, 'the open controller root stays registered across stage lifecycle');
+  assert.equal(hook.calls.some(items => items.length === 0), false, 'phase changes do not clear the sidekick');
+  hook.unmount();
 });
 
-test('Learn/Play remain placeholders; Live disabled without verified BBB organiser identity', () => {
-  const pluginApi = unavailableApi();
+test('student and guest never receive an Apps sidekick, but receive the main stage while active', () => {
+  const hook = hookRoot({ teacher: false, icon: {}, activeSessionId: 'room', mainContentFunction: () => {} });
+  assert.equal(hook.items.length, 1);
+  assert.equal(hook.items[0] instanceof sdk.GenericContentMainArea, true);
+  hook.update({ teacher: false, icon: {}, activeSessionId: '', mainContentFunction: null });
+  assert.equal(hook.items.length, 0, 'without an active activity the normal BBB stage remains');
+  hook.unmount();
+});
+
+test('controller contains session controls and status only, never game, answer, reveal or result UI', () => {
+  const value = runtime(); publishController(value);
   let root;
-  act(() => { root = create(React.createElement(TeacherPanel, { pluginApi })); });
-  assert.deepEqual(ACTIVITIES.map((a) => a.label), ['Μαθαίνω', 'Παίζω', 'Live']);
-  const buttons = root.root.findAllByType('button').filter((button) => button.props['data-testid']?.startsWith('lgu-activity-'));
-  assert.equal(buttons.length, 3);
-  assert.equal(buttons[2].props.disabled, true);
-  for (let i = 0; i < 2; i += 1) {
-    act(() => buttons[i].props.onClick());
-    assert.equal(buttons[i].props['aria-pressed'], true);
-    assert.match(root.root.findByProps({ role: 'status' }).children.join(''), /Δεν ξεκίνησε δραστηριότητα/);
+  act(() => { root = create(React.createElement(ControllerPanel)); });
+  const rendered = JSON.stringify(root.toJSON());
+  assert.match(rendered, /live-theme/);
+  assert.match(rendered, /live-session-picker/);
+  for (const action of ['start', 'open', 'close', 'reveal', 'next', 'finish']) {
+    assert.equal(root.root.findAllByProps({ 'data-testid': `live-command-${action}` }).length, 1);
   }
-  act(() => root.unmount());
+  for (const forbidden of ['live-question', 'live-answer', 'live-own-result', 'live-reveal', 'live-standings']) {
+    assert.equal(root.root.findAllByProps({ 'data-testid': forbidden }).length, 0);
+  }
+  assert.doesNotMatch(rendered, /correct answer|points|standings|Submit answer/);
+  act(() => root.unmount()); publishController(null);
 });
 
-test('open panel fail closes and clears choice when role is lost or data errors', () => {
-  let user = { loading: false, data: { role: 'MODERATOR' } };
-  const pluginApi = { ...unavailableApi(), useCurrentUser: () => user };
-  let root;
-  act(() => { root = create(React.createElement(TeacherPanel, { pluginApi })); });
-  act(() => root.root.findAllByType('button')[0].props.onClick());
-  user = { loading: false, error: new Error('lost'), data: { role: 'MODERATOR' } };
-  act(() => root.update(React.createElement(TeacherPanel, { pluginApi })));
-  assert.equal(root.root.findAllByType('button').length, 0);
-  user = { loading: false, data: { role: 'MODERATOR' } };
-  act(() => root.update(React.createElement(TeacherPanel, { pluginApi })));
-  assert.ok(root.root.findAllByType('button').filter((b) => b.props['data-testid']?.startsWith('lgu-activity-'))
-    .every((b) => b.props['aria-pressed'] === false));
-  act(() => root.unmount());
+test('viewer controller code is never registered even when runtime knows an active session', () => {
+  const hook = hookRoot({ teacher: false, icon: {}, activeSessionId: '', mainContentFunction: null });
+  assert.equal(hook.items.length, 0);
+  hook.unmount();
 });

@@ -6,7 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash, createHmac } = require('node:crypto');
 const { ContractError } = require('../server/identity-service.cjs');
-const { PREFIX, signatureHeaders, CookieVault, safeView, createFederationClient } = require('../server/federation-client.cjs');
+const { PREFIX, signatureHeaders, CookieVault, safeView, validPrivateResourcePath, createFederationClient } = require('../server/federation-client.cjs');
 const { createLiveBff } = require('../server/live-bff.cjs');
 const { version } = require('../package.json');
 
@@ -105,6 +105,11 @@ function fixture(t, { mode = 'core', organiser = false, ttl = 43200 } = {}) {
         assert.equal(nonces.has(nonce), false, 'fresh nonce on EVERY signed request'); nonces.add(nonce);
         assert.equal(h.get('x-lgu-federation-signature'), expectedSignature({ now, nonce, method: options.method, path, body: raw }));
         if (options.method === 'GET') assert.equal(options.body, undefined, 'GET signs the empty byte string');
+      } else if (path.startsWith('/media/') || path.startsWith('/api/audio?')) {
+        assert.equal(options.method, 'GET'); assert.equal(h.get('origin'), ORIGIN);
+        assert.equal(h.has('x-lgu-request'), false);
+        assert.ok(h.get('cookie')?.includes(mode === 'core' ? `lgu_session=${ACCOUNT}` : `lgu_live=${LIVE}`));
+        assert.equal(h.get('x-lgu-client'), 'web/0.1.0');
       } else {
         assert.equal(h.get('origin'), ORIGIN); assert.equal(h.get('x-lgu-request'), '1');
         assert.equal(h.has('x-lgu-federation-issuer'), false);
@@ -148,6 +153,7 @@ function fixture(t, { mode = 'core', organiser = false, ttl = 43200 } = {}) {
   t.after(() => bff.dispose());
   return { bff, client, identity, ownProof, calls, authCalls, vaults, launch, activation, context,
     handle: (operation, body = {}, signal) => bff.handle(operation, ownProof, body, signal),
+    resource: (path, signal, headers) => bff.handlePlayerResource(path, ownProof, signal, headers),
     advance: seconds => { now += seconds; }, setOverride: fn => { override = fn; },
     setState: value => { state = value; }, setCommandResult: value => { commandResult = value; },
     setAuthFailure: value => { authFailure = value; }, count: suffix => calls.filter(c => new URL(c.url).pathname === PREFIX + suffix).length };
@@ -181,6 +187,39 @@ test('CookieVault accepts only LGU cookies, honors deletion/clock expiry and cap
   // Exercise the fallback for implementations without Headers.getSetCookie().
   vault.absorb({ get: () => `${cookie('lgu_fed', FED)}, ${cookie('lgu_live', LIVE)}` });
   assert.equal(vault.header(), `lgu_fed=${FED}; lgu_live=${LIVE}`);
+});
+
+test('private resource routes are narrowly allowlisted and proxy media/audio bytes through the server cookie vault', async t => {
+  const f = fixture(t, { mode: 'guest' });
+  for (const path of [
+    '/media/odyssey/stone-001.webp',
+    '/api/audio?mode=live&id=22222222-2222-4222-8222-222222222222&lang=el&segment=prompt',
+  ]) assert.equal(validPrivateResourcePath(path), true);
+  for (const path of ['/media/../secret', '/media/topic/nested/image.webp', '/api/audio?mode=admin&id=x',
+    '/api/audio?mode=live&id=22222222-2222-4222-8222-222222222222&lang=el&segment=prompt&url=https://evil.test',
+    '/api/audio?mode=live&mode=admin&id=22222222-2222-4222-8222-222222222222&lang=el&segment=prompt']) {
+    assert.equal(validPrivateResourcePath(path), false);
+  }
+  await f.handle('enter', { sessionId: SESSION });
+  const mediaPath = '/media/odyssey/stone-001.webp';
+  const audioPath = `/api/audio?mode=live&id=${SESSION}&lang=el&segment=prompt`;
+  f.setOverride(call => call.path === mediaPath ? new Response(Uint8Array.from([10, 11]), { headers: {
+    'Content-Type': 'image/webp', 'Set-Cookie': cookie('lgu_live', LIVE), 'X-Upstream-Secret': SECRET,
+  } }) : call.path === audioPath ? new Response(Uint8Array.from([12, 13]), { headers: {
+    'Content-Type': 'audio/mpeg', 'Set-Cookie': cookie('lgu_live', LIVE),
+  } }) : undefined);
+  for (const [path, expectedType, expectedBytes] of [[mediaPath, 'image/webp', [10, 11]], [audioPath, 'audio/mpeg', [12, 13]]]) {
+    const response = await f.resource(path, new AbortController().signal, { accept: '*/*', client: 'web/0.1.0' });
+    assert.equal(response.headers.get('content-type'), expectedType);
+    assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], expectedBytes);
+  }
+  const resourceCalls = f.calls.filter(call => call.path === mediaPath || call.path === audioPath);
+  assert.equal(resourceCalls.length, 2);
+  assert.ok(resourceCalls.every(call => call.headers.get('cookie').includes(`lgu_live=${LIVE}`)));
+  assert.ok(resourceCalls.every(call => call.options.credentials === 'omit'));
+  assert.ok(resourceCalls.every(call => call.headers.has('origin')));
+  assert.ok(resourceCalls.every(call => !call.headers.has('x-lgu-federation-signature')));
+  assert.doesNotMatch(JSON.stringify(resourceCalls.map(call => call.options.headers)), /fixture-bbb-proof|fixture-core-proof|SSSSSS/);
 });
 
 test('safeView recursively redacts credentials, join code/path and pending without mutating engine results', () => {

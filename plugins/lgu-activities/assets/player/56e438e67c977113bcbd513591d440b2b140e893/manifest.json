@@ -1,0 +1,23 @@
+{
+  "name": "lgu-live-player",
+  "version": "0.1.0",
+  "builtAt": "2026-10-09T06:23:20.537Z",
+  "entry": "lgu-live-player.js",
+  "stylesheet": "lgu-live-player.css",
+  "types": "lgu-live-player.d.ts",
+  "root": ".lgu-player",
+  "api": "/api/v1/",
+  "files": {
+    "lgu-live-player.js": 419294,
+    "lgu-live-player.js.map": 2013003,
+    "lgu-live-player.css": 107545,
+    "lgu-live-player.d.ts": 4060,
+    "fonts/inter-greek-ext.woff2": 11232,
+    "fonts/inter-greek.woff2": 18996,
+    "fonts/inter-latin-ext.woff2": 85068,
+    "fonts/inter-latin.woff2": 48256,
+    "fonts/source-serif-4-greek.woff2": 49336,
+    "fonts/source-serif-4-latin-ext.woff2": 100872,
+    "fonts/source-serif-4-latin.woff2": 122360
+  }
+}
