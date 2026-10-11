@@ -234,6 +234,8 @@ function createFederationClient({ sessionToken, coreToken, fetchImpl = globalThi
       };
       const connect = async attempt => {
         if (stopped) return;
+        let receivedEvent = false;
+        let endedNormally = false;
         try {
           activeStream = await transport('stream', { sessionId, after: cursor }, stopController.signal, true);
           if (stopped) { activeStream.scope.controller.abort(); await activeStream.response.body.cancel(); return; }
@@ -243,6 +245,7 @@ function createFederationClient({ sessionToken, coreToken, fetchImpl = globalThi
             let payload;
             try { payload = JSON.parse(notification.data); } catch { throw new LiveError('INVALID_RESPONSE'); }
             noCredentials(payload);
+            receivedEvent = true;
             const sequence = Number(notification.id || payload?.seq);
             if (safeInteger(sequence)) cursor = Math.max(cursor, sequence);
             // hello reconciles on reconnect, ping reconciles any missed log entry.
@@ -252,7 +255,7 @@ function createFederationClient({ sessionToken, coreToken, fetchImpl = globalThi
             const idle = timers.setTimeout(() => activeStream?.scope.controller.abort(), 45000);
             let chunk;
             try { chunk = await reader.read(); } finally { timers.clearTimeout(idle); }
-            if (chunk.done) { parser.push(undefined, true); break; }
+            if (chunk.done) { parser.push(undefined, true); endedNormally = true; break; }
             parser.push(chunk.value);
           }
         } catch (error) {
@@ -263,6 +266,13 @@ function createFederationClient({ sessionToken, coreToken, fetchImpl = globalThi
           activeStream?.scope.controller.abort(); activeStream?.scope.clean(); activeStream = null;
         }
         if (stopped) return;
+        // A valid orderly EOF renews the BFF's 20s reauthentication window.
+        // Empty streams and actual network failures keep the bounded budget.
+        if (endedNormally && receivedEvent) {
+          onMode('reconnecting');
+          timer = timers.setTimeout(() => { void connect(0); }, 1000);
+          return;
+        }
         if (attempt >= 3) { poll(); return; }
         onMode('reconnecting');
         timer = timers.setTimeout(() => { void connect(attempt + 1); }, 1000 * (2 ** attempt));

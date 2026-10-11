@@ -181,6 +181,34 @@ test('bounded stream reconnects use latest cursor and fall back, never re-enter 
   client.dispose(); assert.equal(timers.pending.size, 0);
 });
 
+test('valid orderly bounded stream renewals do not exhaust the reconnect budget', async () => {
+  const timers = clock(); const modes = []; let streams = 0;
+  const client = createFederationClient({ sessionToken: 'bbb', timers, fetchImpl: async url => {
+    if (url.endsWith('/state')) return json(state());
+    streams++;
+    return new Response('event: hello\ndata: {"seq":5}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+  } });
+  client.watch('room', { onState() {}, onMode: m => modes.push(m), onError: assert.fail });
+  await flush();
+  for (let i = 0; i < 6; i++) await timers.tick(1000);
+  assert.equal(streams, 7);
+  assert.equal(modes.includes('polling'), false);
+  client.dispose(); await flush(); assert.equal(timers.pending.size, 0);
+});
+
+test('empty EOF streams exhaust the bounded budget and fall back without mutations', async () => {
+  const timers = clock(); const modes = []; let streams = 0;
+  const client = createFederationClient({ sessionToken: 'bbb', timers, fetchImpl: async url => {
+    if (url.endsWith('/state')) return json(state());
+    streams++; return new Response('', { headers: { 'Content-Type': 'text/event-stream' } });
+  } });
+  client.watch('room', { onState() {}, onMode: m => modes.push(m), onError: assert.fail });
+  await flush();
+  for (const ms of [1000, 2000, 4000]) await timers.tick(ms);
+  assert.equal(streams, 4); assert.equal(modes.includes('polling'), true);
+  client.dispose(); await flush(); assert.equal(timers.pending.size, 0);
+});
+
 test('401 on stream or failed state stops watch without fallback or automatic context', async () => {
   for (const failedRoute of ['state', 'stream']) {
     const timers = clock(); const routes = []; const errors = [];

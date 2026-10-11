@@ -85,3 +85,14 @@ test('viewer controller code is never registered even when runtime knows an acti
   assert.equal(hook.items.length, 0);
   hook.unmount();
 });
+
+test('controller snapshot becoming null retains hook order and can recover', () => {
+  publishController(runtime());
+  let root;
+  act(() => { root = create(React.createElement(ControllerPanel)); });
+  act(() => publishController(null));
+  assert.match(JSON.stringify(root.toJSON()), /Loading controller/);
+  act(() => publishController(runtime()));
+  assert.equal(root.root.findAllByProps({ 'data-testid': 'live-command-finish' }).length, 1);
+  act(() => root.unmount()); publishController(null);
+});

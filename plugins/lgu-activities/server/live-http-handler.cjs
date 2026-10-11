@@ -1,7 +1,18 @@
-const { once } = require('node:events');
 const { ContractError } = require('./identity-service.cjs');
 const { safeView, validPrivateResourcePath } = require('./federation-client.cjs');
 const PLAYER_PREFIX = '/api/lgu-activities/v1/player';
+
+function waitForDrain(response, signal) {
+  return new Promise(resolve => {
+    const done = () => {
+      response.off('drain', done); response.off('close', done);
+      signal.removeEventListener('abort', done); resolve();
+    };
+    response.once('drain', done); response.once('close', done);
+    signal.addEventListener('abort', done, { once: true });
+    if (response.destroyed || signal.aborted) done();
+  });
+}
 
 // Streams carry sanitized engine notifications, not credential response headers.
 async function relayEvents(upstream, response, signal) {
@@ -26,7 +37,7 @@ async function relayEvents(upstream, response, signal) {
         if (!event || !/^[a-z_]{1,64}$/.test(event) || !raw) continue;
         const data = safeView(JSON.parse(raw));
         const output = `${id && /^\d{1,15}$/.test(id) ? `id: ${id}\n` : ''}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        if (!response.write(output)) await Promise.race([once(response, 'drain'), once(response, 'close')]);
+        if (!response.write(output)) await waitForDrain(response, signal);
       }
     }
   } finally { signal.removeEventListener('abort', cancel); await reader.cancel().catch(() => {}); reader.releaseLock(); }
@@ -39,7 +50,7 @@ async function relayResource(upstream, response, signal) {
     while (!signal.aborted) {
       const chunk = await reader.read();
       if (chunk.done) break;
-      if (!response.write(Buffer.from(chunk.value))) await Promise.race([once(response, 'drain'), once(response, 'close')]);
+      if (!response.write(Buffer.from(chunk.value))) await waitForDrain(response, signal);
     }
   } finally {
     signal.removeEventListener('abort', cancel);

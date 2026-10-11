@@ -15,6 +15,7 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const errors = []; const externalRequests = []; const unexpectedPages = []; const apiRequests = [];
   const contexts = [];
+  const responsiveChecks = [];
   try {
     async function participant(role) {
       const context = await browser.newContext({ viewport: { width: 1100, height: 900 } }); contexts.push(context);
@@ -62,6 +63,29 @@ async function main() {
     await teacher.locator('#stage .lgu-player').waitFor();
     await student.locator('#stage .lgu-player').waitFor({ timeout: 15000 });
     assert.equal(await student.getByRole('button', { name: 'LGU Activities', exact: true }).count(), 0);
+    async function checkSlot(page, viewport, phase) {
+      await page.setViewportSize(viewport);
+      const layout = await page.locator('.lgu-player-host').evaluate(host => {
+        const slot = host.parentElement, h = host.getBoundingClientRect(), s = slot.getBoundingClientRect();
+        const style = getComputedStyle(host);
+        const covered = document.elementFromPoint(s.left + s.width / 2, s.bottom - 2);
+        return { hostHeight:h.height, slotHeight:s.height, width:h.width, slotWidth:s.width,
+          overflow:style.overflowY, background:style.backgroundColor,
+          scrollWidth:host.scrollWidth, clientWidth:host.clientWidth,
+          slotTop:s.top, slotBottom:s.bottom, viewportHeight:innerHeight,
+          covered:host.contains(covered), bodyOverflow:document.documentElement.scrollWidth > innerWidth };
+      });
+      assert.ok(Math.abs(layout.hostHeight - layout.slotHeight) < 2, JSON.stringify(layout));
+      assert.ok(Math.abs(layout.width - layout.slotWidth) < 2);
+      assert.equal(layout.overflow, 'auto'); assert.equal(layout.background, 'rgb(255, 255, 255)');
+      assert.equal(layout.covered, true, 'opaque host covers the lower whiteboard too: ' + JSON.stringify(layout));
+      assert.ok(layout.scrollWidth <= layout.clientWidth + 1, 'no horizontal game overflow');
+      assert.equal(layout.bodyOverflow, false);
+      responsiveChecks.push({ viewport, phase, slotCovered:true, boundedScroll:true });
+    }
+    const sizes = [{ width:1150, height:536 }, { width:1440, height:900 },
+      { width:1024, height:768 }, { width:768, height:1024 }];
+    for (const viewport of sizes) for (const page of [teacher, student]) await checkSlot(page, viewport, 'prepare');
     await teacher.getByTestId('live-command-open').click();
     await teacher.locator('#stage .question-prompt').filter({ hasText: 'Choose the fixture answer' }).waitFor();
     await student.locator('#stage .question-prompt').filter({ hasText: 'Choose the fixture answer' }).waitFor();
@@ -70,6 +94,7 @@ async function main() {
     assert.equal(await teacher.evaluate(() => getComputedStyle(document.body).backgroundColor), hostBodyBackground,
       'LGU stylesheet did not change BBB host body CSS');
     assert.equal(await teacher.locator('iframe').count(), 0); assert.equal(await student.locator('iframe').count(), 0);
+    for (const viewport of sizes) for (const page of [teacher, student]) await checkSlot(page, viewport, 'open');
 
     await student.locator('#stage .answer-option').filter({ hasText: 'First fixture option' }).click();
     await student.getByRole('button', { name: 'Υποβολή απάντησης', exact: true }).click();
@@ -80,6 +105,25 @@ async function main() {
     await student.locator('#stage .answer-reveal').waitFor();
     assert.match(await student.locator('#stage .live-own').innerText(), /73/);
     assert.equal(fixture.counts().answers, 1);
+
+    for (const viewport of sizes) for (const page of [teacher, student]) {
+      await checkSlot(page, viewport, 'reveal');
+      await page.locator('.lgu-player-host').focus();
+      await page.keyboard.press('End');
+      await page.waitForFunction(() => {
+        const host = document.querySelector('.lgu-player-host');
+        return host.scrollHeight <= host.clientHeight || host.scrollTop > 0;
+      });
+      const reached = await page.locator('.lgu-player-host').evaluate(host => {
+        host.scrollTop = host.scrollHeight;
+        const rows = host.querySelector('.live-standings');
+        const h = host.getBoundingClientRect(), r = rows.getBoundingClientRect();
+        return { scrollTop:host.scrollTop, bottom:r.bottom, top:r.top, hostBottom:h.bottom, hostTop:h.top };
+      });
+      assert.ok(reached.bottom <= reached.hostBottom + 2 && reached.top >= reached.hostTop - 2,
+        'standings can be scrolled into the visible BBB slot: ' + JSON.stringify(reached));
+      await page.locator('.lgu-player-host').evaluate(host => { host.scrollTop = 0; });
+    }
 
     await teacher.getByTestId('live-command-finish').click();
     await teacher.locator('#sidekick .lgu-activities-controller__status').filter({ hasText: /Published sample · finished/ }).waitFor();
@@ -109,6 +153,7 @@ async function main() {
       result: 'PASS', lguPlayerCommit: LGU_PLAYER_COMMIT, fixtureCounts: fixture.counts(),
       browserRequests: apiRequests.length, externalPublicAssetOrigins: [...new Set(externalRequests)],
       noIframe: true, noNewWindow: true, noStudentSidekick: true, finishRestoresPresentation: true,
+      responsiveChecks,
     }, null, 2));
   } finally {
     for (const context of contexts) await context.close();

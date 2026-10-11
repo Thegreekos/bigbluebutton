@@ -4,16 +4,24 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LGU Activities — local SDK host harness</title>
   <style>
-    body { margin: 0; color: #172b43; background: #edf1f7; font: 16px/1.5 system-ui, sans-serif; }
-    header { background: #172b43; color: white; padding: 20px; }
+    body { margin:0; height:100dvh; display:flex; flex-direction:column; overflow:hidden; color:#172b43; background:#edf1f7; font:16px/1.5 system-ui,sans-serif; }
+    header { flex:0 0 150px; box-sizing:border-box; overflow:hidden; background:#172b43; color:white; padding:8px; }
     header h1 { margin: 0; font-size: 22px; }
     header p { margin: 8px 0; }
-    nav { padding: 20px; }
+    nav { flex:0 0 80px; box-sizing:border-box; padding:8px; }
+    nav h2 { display:none; }
     button, select { padding: 10px 14px; margin: 4px; border-radius: 8px; border: 1px solid #b5c2d2; font: inherit; }
     button { cursor: pointer; background: white; }
     button:focus-visible { outline: 3px solid #3c50a0; }
-    #stage { min-height: 360px; margin: 20px; padding: 20px; background: #fff; border: 1px solid #b5c2d2; border-radius: 12px; }
-    #sidekick { background: white; border-radius: 16px; margin: 20px; max-width: 440px; overflow: hidden; box-shadow: 0 8px 32px #172b4320; }
+    #workspace { display:flex; flex:1; min-height:0; gap:12px; margin:12px; }
+     #stage { position:relative; flex:1; min-width:0; background:#fff; border:1px solid #b5c2d2; }
+     #board { position:absolute; inset:0; background:#edf1f7; }
+     /* Mirrors BBB GenericContentItem: bounded 100% height, overflow hidden,
+       over a still-mounted presentation. Never an auto-height test shortcut. */
+     #main-slot { position:absolute; inset:0; height:100%; overflow:hidden; }
+     #main-slot:empty { display:none; }
+     #sidekick { order:-1; width:280px; flex-shrink:0; background:white; overflow:auto; }
+     #content { height:calc(100% - 52px); overflow:hidden; }
     #sidekick[hidden] { display: none; }
     #plugin-root { display: none; }
   </style>
@@ -24,8 +32,10 @@
     <label>BBB role <select id="role"><option>MODERATOR</option><option>VIEWER</option><option>LOADING</option><option>ERROR</option></select></label>
   </header>
   <nav aria-label="Apps"><h2>Apps</h2><div id="apps"></div></nav>
-  <main id="stage" aria-label="BBB presentation stage">BBB presentation / whiteboard</main>
-  <aside id="sidekick" hidden aria-label="Teacher panel"><button id="close" type="button">Κλείσιμο panel</button><div id="content"></div></aside>
+  <div id="workspace">
+    <main id="stage" aria-label="BBB presentation stage"><div id="board">BBB presentation / whiteboard</div><div id="main-slot"></div></main>
+    <aside id="sidekick" hidden aria-label="Teacher panel"><button id="close" type="button">Κλείσιμο panel</button><div id="content"></div></aside>
+  </div>
   <div id="plugin-root"></div>
   <script src="/react.js"></script>
   <script src="/host.js"></script>

@@ -5,6 +5,15 @@ const PLAYER_BASE = `/plugins/lgu-activities/player/${LGU_PLAYER_COMMIT}`;
 const PLAYER_PUBLIC_ASSET_ORIGIN = 'https://lgu.thegreekos.com';
 const h = React.createElement;
 
+// Fit the BBB-owned (height:100%, overflow:hidden) generic-content slot.
+// The opaque host covers the presentation; its bounded box owns scrolling.
+// Neither the BBB layout nor the immutable LGU stylesheet is modified.
+const HOST_STYLE = `
+.lgu-player-host { box-sizing:border-box; width:100%; height:100%; min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain; background:#fff; isolation:isolate; }
+.lgu-player-host > .lgu-player-container { min-height:100%; }
+.lgu-player-host .lgu-player { min-height:100%; }
+`;
+
 function importPlayer(url) {
   return import(/* webpackIgnore: true */ url);
 }
@@ -47,7 +56,7 @@ function PlayerMount({ sessionId, pluginApi, sessionToken, coreToken, spectator 
     return () => lifecycle.unmount();
   }, [sessionId, pluginApi, sessionToken, coreToken, spectator]);
 
-  return h('div', { className: 'lgu-player-host', 'data-testid': 'lgu-main-player', ref: host,
+  return h('div', { className: 'lgu-player-host', 'data-testid': 'lgu-main-player', ref: host, tabIndex: 0,
     'aria-label': spectator ? 'LGU Live audience view' : 'LGU Live player' },
   error && h('p', { role: 'alert' }, error));
 }
@@ -55,7 +64,8 @@ function PlayerMount({ sessionId, pluginApi, sessionToken, coreToken, spectator 
 function createPlayerMainContent({ pluginApi, sessionToken, coreToken, sessionId, spectator }) {
   return element => {
     const root = createRoot(element);
-    root.render(h(PlayerMount, { pluginApi, sessionToken, coreToken, sessionId, spectator }));
+    root.render(h(React.Fragment, null, h('style', null, HOST_STYLE),
+      h(PlayerMount, { pluginApi, sessionToken, coreToken, sessionId, spectator })));
     return root; // BBB owns this root; effect cleanup unmounts the isolated LGU bundle.
   };
 }

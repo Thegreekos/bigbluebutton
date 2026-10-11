@@ -11,12 +11,12 @@
   const apps = document.getElementById('apps');
   const sidekick = document.getElementById('sidekick');
   const stage = document.getElementById('stage');
+  const mainSlot = document.getElementById('main-slot');
   const metadataSubscriptions = new Map();
   let userResult = roleResponse(initialRole);
   let panelRoot; let panelId; let mainRoot; let mainId;
   const unmountPanel = () => { panelRoot?.unmount(); panelRoot = null; panelId = null; sidekick.hidden = true; };
-  const unmountMain = () => { mainRoot?.unmount(); mainRoot = null; mainId = null;
-    stage.textContent = 'BBB presentation / whiteboard'; };
+  const unmountMain = () => { mainRoot?.unmount(); mainRoot = null; mainId = null; };
   document.getElementById('close').addEventListener('click', unmountPanel);
   const sendUser = () => window.dispatchEvent(new CustomEvent('BBB_CORE_SENT_NEW_DATA', {
     detail: { hook: CURRENT_USER, data: userResult },
@@ -69,7 +69,7 @@
           if (!mainItem) { if (mainRoot) unmountMain(); }
           else if (mainId !== mainItem.id) {
             unmountMain(); mainId = mainItem.id;
-            mainRoot = mainItem.contentFunction(stage);
+            mainRoot = mainItem.contentFunction(mainSlot);
           }
         });
         return items.map(item => item.id);
