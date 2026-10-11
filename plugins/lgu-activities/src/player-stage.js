@@ -1,6 +1,6 @@
 const React = require('react');
 const { createRoot } = require('react-dom/client');
-const LGU_PLAYER_COMMIT = '56e438e67c977113bcbd513591d440b2b140e893';
+const LGU_PLAYER_COMMIT = 'df7ad50bbe6aa46c8c0aef576eef745185dbb76b';
 const PLAYER_BASE = `/plugins/lgu-activities/player/${LGU_PLAYER_COMMIT}`;
 const PLAYER_PUBLIC_ASSET_ORIGIN = 'https://lgu.thegreekos.com';
 const h = React.createElement;
@@ -41,7 +41,7 @@ function mountPinnedPlayer({ element, sessionId, sessionToken, coreToken, specta
       },
     };
     mountedPlayer = module.mountLivePlayer(element, { sessionId, locale: 'el',
-      transport: authenticatedTransport, spectator, audio: !spectator });
+      transport: authenticatedTransport, ...(spectator ? { spectator: true } : {}), audio: !spectator });
   });
   return { ready, unmount() { cancelled = true; mountedPlayer?.unmount(); stylesheet.remove(); } };
 }

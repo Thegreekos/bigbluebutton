@@ -7,7 +7,7 @@ const { createLiveHttpHandler } = require('../server/live-http-handler.cjs');
 function createLocalServer({ identityService, liveBff } = {}) {
   const root = path.resolve(__dirname, '..');
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'dist/manifest.json'), 'utf8'));
-  const playerCommit = '56e438e67c977113bcbd513591d440b2b140e893';
+  const playerCommit = 'df7ad50bbe6aa46c8c0aef576eef745185dbb76b';
   const playerBase = `/plugins/lgu-activities/player/${playerCommit}`;
   // Explicit route allowlist: never serve secrets/source directories or proxy APIs.
   const routes = new Map([

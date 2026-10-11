@@ -36,7 +36,7 @@ test('pinned LGU bundle is mounted once with the real proxy transport and BBB pr
   assert.equal(links[0].dataset.lguPlayerCommit, LGU_PLAYER_COMMIT);
   assert.equal(mounted.target, element);
   assert.equal(mounted.props.sessionId, 'session-uuid');
-  assert.equal(mounted.props.spectator, false);
+  assert.equal(Object.hasOwn(mounted.props, 'spectator'), false, 'host/player uses authoritative view, not spectator');
   assert.equal(mounted.props.transport.assetUrl('/media/x/y.webp'), 'https://lgu.thegreekos.com/media/x/y.webp');
   await mounted.props.transport.fetch('/api/v1/live/session-uuid', { method: 'GET', headers: { 'X-LGU-Client': 'web/0.1.0' } });
   assert.equal(mounted.request.path, `/api/lgu-activities/v1/player/api/v1/live/session-uuid`);
@@ -60,6 +60,18 @@ test('unmount before bundle load prevents a late mount and removes stylesheet', 
   await lifecycle.ready;
   assert.equal(mountCount, 0);
   assert.equal(link.removed, true);
+});
+
+test('explicit spectator audience mode is retained with audio disabled', async () => {
+  let props;
+  const lifecycle = mountPinnedPlayer({ element: {}, sessionId: 'session-uuid', sessionToken: 'bbb-proof', spectator: true,
+    documentObject: { head: { appendChild() {} }, createElement: () => ({ dataset: {}, remove() {} }) },
+    loadModule: async () => ({ proxyTransport: () => ({ assetUrl: p => p, fetch: async () => new Response('{}') }),
+      mountLivePlayer(element, value) { props = value; return { unmount() {} }; } }),
+  });
+  await lifecycle.ready;
+  assert.equal(props.spectator, true); assert.equal(props.audio, false);
+  lifecycle.unmount();
 });
 
 test('only the canonical player bundle is referenced; no iframe/new-window/second renderer fallback exists', () => {

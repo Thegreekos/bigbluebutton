@@ -13,7 +13,7 @@ function ActivitiesBootstrap({ pluginUuid, pluginName }) {
   const { controller, playerAuth } = runtime;
   const sessionId = controller.showMainStage ? controller.session.id : '';
   const mainContentFunction = React.useMemo(() => sessionId ? createPlayerMainContent({
-    pluginApi, sessionToken: playerAuth.sessionToken, coreToken: playerAuth.coreToken, sessionId, spectator: false,
+    pluginApi, sessionToken: playerAuth.sessionToken, coreToken: playerAuth.coreToken, sessionId,
   }) : null, [pluginApi, playerAuth.sessionToken, playerAuth.coreToken, sessionId]);
   const icon = React.useMemo(() => React.createElement('svg', {
     viewBox: '0 0 24 24', width: 24, height: 24, fill: 'none',

@@ -37,7 +37,8 @@ test('browser has no direct LGU calls, shared storage, signing keys or server mo
   assert.doesNotMatch(source, /useCustomMutation|useDataChannel|privateKey|require\(['"]\.\.\/server/);
   assert.match(source, /\/api\/lgu-activities\/v1\//);
   assert.match(source, /user_metadata/);
-  assert.match(source, /56e438e67c977113bcbd513591d440b2b140e893/);
+  assert.match(source, /df7ad50bbe6aa46c8c0aef576eef745185dbb76b/);
+  assert.doesNotMatch(source, /56e438e67c977113bcbd513591d440b2b140e893/);
   assert.doesNotMatch(source, /function QuestionForm|live-question|live-answer/);
   assert.equal(fs.existsSync(path.join(src, 'live-panel.js')), false);
   assert.doesNotMatch(JSON.stringify(pkg), /refs\/pull\/46|github.*lgu/i);

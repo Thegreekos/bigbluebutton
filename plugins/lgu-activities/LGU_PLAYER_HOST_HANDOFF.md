@@ -1,5 +1,10 @@
 # LGU handoff: canonical host reveal copy
 
+## Resolved upstream; integration pending real scoped retest
+
+LGU PR #53 merged on main at `df7ad50bbe6aa46c8c0aef576eef745185dbb76b`.
+BBB plugin0.4.2 stages its official successful CI run38123134346 artifact after COMMIT and13SHA256SUMS checks. The new canonical renderer uses `liveViewer` to distinguish host/player/audience, shows the host organiser badge and public reveal/counts/standings, and omits the personal no-answer card for host. Normal BBB mounts now omit the spectator prop; explicit spectatortrue behavior remains. The historical diagnosis below applies to the previous pin, not the new active artifact. Actual new-meeting visual approval is still required.
+
 ## Verified provenance and reproduction
 
 BBB keeps the canonical player artifact at LGU commit `56e438e67c977113bcbd513591d440b2b140e893` byte-identical. Its committed source map identifies **`app/screens/live-play-screen.tsx`** as the original screen responsible for the copy.

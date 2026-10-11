@@ -94,6 +94,11 @@ async function main() {
     assert.equal(await teacher.evaluate(() => getComputedStyle(document.body).backgroundColor), hostBodyBackground,
       'LGU stylesheet did not change BBB host body CSS');
     assert.equal(await teacher.locator('iframe').count(), 0); assert.equal(await student.locator('iframe').count(), 0);
+    assert.equal(await teacher.locator('#stage .live-host-pill').innerText(), 'Διοργανωτής');
+    assert.equal(await student.locator('#stage .live-host-pill').count(), 0);
+    assert.equal(await teacher.getByRole('button', { name: 'Υποβολή απάντησης', exact: true }).count(), 0);
+    assert.equal(await teacher.locator('#stage .answer-option:not(:disabled)').count(), 0,
+      'host reads options but does not answer');
     for (const viewport of sizes) for (const page of [teacher, student]) await checkSlot(page, viewport, 'open');
 
     await student.locator('#stage .answer-option').filter({ hasText: 'First fixture option' }).click();
@@ -105,6 +110,11 @@ async function main() {
     await student.locator('#stage .answer-reveal').waitFor();
     assert.match(await student.locator('#stage .live-own').innerText(), /73/);
     assert.equal(fixture.counts().answers, 1);
+    await teacher.locator('#stage .answer-reveal').waitFor();
+    assert.equal(await teacher.locator('#stage .live-own').count(), 0);
+    assert.doesNotMatch(await teacher.locator('#stage').innerText(), /Δεν απάντησες|You did not answer/);
+    assert.match(await teacher.locator('#stage .live-count').innerText(), /1.*1/);
+    for (const page of [teacher, student]) assert.match(await page.locator('#stage .live-standings').innerText(), /73/);
 
     for (const viewport of sizes) for (const page of [teacher, student]) {
       await checkSlot(page, viewport, 'reveal');
@@ -153,6 +163,7 @@ async function main() {
       result: 'PASS', lguPlayerCommit: LGU_PLAYER_COMMIT, fixtureCounts: fixture.counts(),
       browserRequests: apiRequests.length, externalPublicAssetOrigins: [...new Set(externalRequests)],
       noIframe: true, noNewWindow: true, noStudentSidekick: true, finishRestoresPresentation: true,
+      hostViewWithoutSpectator: true, hostNoPersonalNoAnswerCopy: true, hostPublicRevealAndStandings: true,
       responsiveChecks,
     }, null, 2));
   } finally {

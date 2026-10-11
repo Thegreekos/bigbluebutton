@@ -1,9 +1,9 @@
 # Canonical LGU Live player artifact
 
-The immutable subdirectory `56e438e67c977113bcbd513591d440b2b140e893/` was built from LGU `main` at the merge commit for PR #50. It is the only player pin used by the BBB plugin.
+The active immutable subdirectory is `df7ad50bbe6aa46c8c0aef576eef745185dbb76b/`, from LGU main PR #53's merge. Official successful main CI run: `38123134346`; artifact: `lgu-live-player-df7ad50bbe6aa46c8c0aef576eef745185dbb76b`. The previous PR #50 artifact is retained for history, not referenced by the active plugin.
 
-Re-stage from a clean checkout of that exact LGU commit with:
+Stage only the official CI artifact after verifying successful main/head SHA, archive digest, `COMMIT` and `sha256sum -c SHA256SUMS` (13 files):
 
-`npm run stage:player -- --source <LGU-checkout>/dist/player --commit 56e438e67c977113bcbd513591d440b2b140e893`
+`npm run stage:player -- --source <verified-official-artifact> --commit df7ad50bbe6aa46c8c0aef576eef745185dbb76b`
 
-The staged files are generated bundle assets, not copied LGU React components. Do not update the pin or install these assets into production during the visual approval phase.
+The stager validates COMMIT, all 13 checksums and manifest sizes/set, preserving checksum metadata. It refuses non-identical immutable collisions. These are generated bundle assets, not copied LGU React components. Only isolated canary deployment is authorized; no production replacement.
