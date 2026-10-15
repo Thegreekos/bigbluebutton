@@ -49,18 +49,23 @@ function useLiveRuntime(pluginApi, user) {
     clientRef.current = client;
     let current = true;
     let refreshing = false;
+    let timer = null;
     const refreshContext = async () => {
       if (refreshing || !current) return;
       refreshing = true;
       try {
         const value = await client.context();
         if (current) { applyContext(value); setStatus('ready'); setError(null); }
-      } catch {
-        if (current) { setError('Live service is unavailable.'); setStatus('failed'); }
+      } catch (failure) {
+        // A 403 is a standing refusal (issuer, organiser or licence), not an outage: polling again only
+        // makes the BFF launch again every 3 s. Stop until the panel remounts.
+        const denied = failure?.code === 'DENIED';
+        if (denied) { clearInterval(timer); timer = null; }
+        if (current) { setError(denied ? 'Live access is not permitted for this meeting.' : 'Live service is unavailable.'); setStatus('failed'); }
       } finally { refreshing = false; }
     };
+    timer = setInterval(refreshContext, 3000);
     void refreshContext();
-    const timer = setInterval(refreshContext, 3000);
     return () => {
       current = false; clearInterval(timer); watchRef.current?.stop(); watchRef.current = null;
       client.dispose(); if (clientRef.current === client) clientRef.current = null;

@@ -74,3 +74,31 @@ test('viewer enters invisibly in lobby, mounts on active state, then restores pr
   assert.equal(root.root.findByType('output').props['data-stage'], 'presentation');
   await act(async () => { root.unmount(); await flush(); });
 });
+
+for (const [status, polls] of [[403, false], [503, true]]) {
+  test(`a context answered ${status} ${polls ? 'keeps polling' : 'stops polling (a standing refusal is not retried)'}`, async t => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    const originalFetch = globalThis.fetch;
+    let contexts = 0;
+    globalThis.fetch = async url => {
+      const route = new URL(url, 'https://bbb.invalid').pathname.split('/').at(-1);
+      if (route !== 'context') throw new Error(`unexpected route: ${route}`);
+      contexts += 1;
+      return new Response(JSON.stringify({ error: 'refused' }), { status, headers: { 'Content-Type': 'application/json' } });
+    };
+    t.after(() => { globalThis.fetch = originalFetch; });
+    const user = { loading: false, data: { userId: 'moderator', role: 'MODERATOR', extId: 'person' } };
+    const api = { useCustomQuery: () => ({ loading: false, data: { user_metadata: [{ parameter: 'schoolcore_context_token', value: 'core-proof' }] } }),
+      getSessionToken: () => 'bbb-proof' };
+    let runtime;
+    function Probe() { runtime = useLiveRuntime(api, user); return null; }
+    let root;
+    await act(async () => { root = create(h(Probe)); await flush(); });
+    assert.equal(contexts, 1);
+    assert.equal(runtime.controller.status, 'failed');
+    for (let i = 0; i < 3; i += 1) await act(async () => { t.mock.timers.tick(3000); await flush(); });
+    assert.equal(contexts, polls ? 4 : 1);
+    assert.equal(runtime.controller.error, status === 403 ? 'Live access is not permitted for this meeting.' : 'Live service is unavailable.');
+    await act(async () => { root.unmount(); await flush(); });
+  });
+}
